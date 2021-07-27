@@ -39,163 +39,151 @@
 #'                             iRT.list = c("LGGNETQVR","AGGSSEPVTGLADK","VEATFGVDESANK","YILAGVESNK","TPVISGGPYYER","TPVITGAPYYER","GDLDAASYYAPVR","DAVTPADFSEWSK","TGFIIDPGGVIR","GTFIIDPAAIVR","FLLQFGAQGSPLFK"))
 
 
-CleanUpChromatograms <- function(chromatogram.path = NULL, peak.boundary.path = NULL, labkey.url.base = NULL, labkey.url.path = NULL, parallel = FALSE, labkey = FALSE, endogenous.label = "light", standard.label = "heavy" , iRT.list = c("LGGNETQVR","AGGSSEPVTGLADK","VEATFGVDESANK","YILAGVESNK","TPVISGGPYYER","TPVITGAPYYER","GDLDAASYYAPVR","DAVTPADFSEWSK","TGFIIDPGGVIR","GTFIIDPAAIVR","FLLQFGAQGSPLFK","LGGNEQVTR","GAGSSEPVTGLDAK","VEATFGVDESNAK","YILAGVENSK","TPVISGGPYEYR","TPVITGAPYEYR","DGLDAASYYAPVR","ADVTPADFSEWSK","GTFIIDPGGVIR","GTFIIDPAAVIR","LFLQFGAQGSPFLK"), ...) {
+iRTList <- function(){
+  invisible(c("LGGNETQVR","AGGSSEPVTGLADK","VEATFGVDESANK","YILAGVESNK",
+              "TPVISGGPYYER","TPVITGAPYYER","GDLDAASYYAPVR","DAVTPADFSEWS0K",
+              "TGFIIDPGGVIR","GTFIIDPAAIVR","FLLQFGAQGSPLFK","LGGNEQVTR",
+              "GAGSSEPVTGLDAK","VEATFGVDESNAK","YILAGVENSK","TPVISGGPYEYR",
+              "TPVITGAPYEYR","DGLDAASYYAPVR","ADVTPADFSEWSK","GTFIIDPGGVIR",
+              "GTFIIDPAAVIR","LFLQFGAQGSPFLK"))
+}
 
-  # parallel = TRUE indicates that function should run in parallel. Currently, the code to use parallel is not implemened/tested and parallel is automatically set to FALSE.
-  if (parallel) {
-    warning('The code to handle parallel = TRUE has not been fully implemented and tested yet. parallel is set to FALSE.')
-    parallel = FALSE
+
+errorReporting <- function(e){
+  f <- deparse(sys.calls()[[sys.nframe()-1]])
+  stop(simpleError(e,call = f))
+}
+
+
+checkFileNames <- function(fnames){
+  f <- gsub(".csv|.tsv","",fnames)
+  f <- basename(f)
+  if(length(f)/2 != length(unique(f))){
+    errorReporting("For each chromatograph file in chromatogram.path, there should be a peak boundary file in peak.boundary.path with an identical file name and vice versa")
+  }else{
+    message("CheckFilenames: Success!")
   }
+}
+
+readData <- function(files, sep){
+  data.table::rbindlist(lapply(files, function(f){
+    d <- data.table::fread(file = f, sep = sep)
+    d$File <- basename(f)
+    names(d) <- gsub(" ","", names(d))
+    d
+  }))
+}
+
+loadData <- function(chrom.Path, peak.Path){
+
+  chrom.Files <- list.files(path = chrom.Path, pattern = ".tsv", full.names = T)
+  peak.Files <- list.files(path = peak.Path, pattern = ".csv", full.names = T)
+
+  checkFileNames(list("chrom.Files" = chrom.Files, "peak.Files" = peak.Files))
+
+  list("chrom" = readData(files = chrom.Files, sep = "\t"),
+       "peak.boundary" = readData(files = peak.Files, sep = ","))
+}
+
+formatChromData <- function(dt,lvls){
+  dt[, IsotopeLabelType := tolower(IsotopeLabelType)]
+  dt[, IsotopeLabelType := factor(IsotopeLabelType, levels = lvls)]
+  dt[, grp := .GRP, .(File, FileName, PeptideModifiedSequence, PrecursorCharge,
+                      FragmentIon, ProductCharge)]
+
+  dc <- data.table::dcast(dt, grp~IsotopeLabelType, value.var = 'TotalArea')
+  dc[is.na(get(endogenous.label)) | is.na(get(standard.label)) ,#| is.na(IsotopLabelType),
+     RemoveIsotopePair := T]
+  dc[is.na(RemoveIsotopePair), RemoveIsotopePair := F]
+
+  dt <- dt[dc, on = 'grp']
+  dt[, ':='(grp = NULL, File = gsub(".tsv","",File))]
+  dt
+}
+
+formatPeakData <- function(dt){
+  # mark the peaks with missing peak boundaries or the ones with multiple peak
+  # boundaries for removal. Note that sometimes skyline exports multiple lines
+  # for a peak, where one line is NA. In these cases, I keep the non-NA line
+  # and remove the NA line as redundant.
+  dt <- unique(dt)
+  dt[, n := .N, .(FileName, File, PeptideModifiedSequence)]
+  dt[(is.na(MinStartTime) | is.na(MaxEndTime)) & n > 1, Redundant := TRUE]
+  dt <- dt[is.na(Redundant)]
+  dt[, n := .N, .(FileName, File, PeptideModifiedSequence)]
+  dt[is.na(MinStartTime) | is.na(MaxEndTime) | n > 1, RemovePeakBoundary := TRUE]
+  dt[is.na(RemovePeakBoundary), RemovePeakBoundary := F]
+  dt[, ':='(n = NULL, Redundant = NULL, File = gsub(".csv","",File))]
+  dt
+}
+
+combineChromPeak <- function(chrom, peak, lvls){
+
+  cData <- formatChromData(dt = chrom, lvls = lvls)
+  pData <- formatPeakData(dt = peak)
+
+  cData <- cData[pData, on = c('File','FileName','PeptideModifiedSequence','PrecursorCharge')]
+  cData[, Remove := RemoveIsotopePair | RemovePeakBoundary]
+  cData
+}
 
 
-  # labkey = TRUE indicates that data is going to be read from labkey using the Rlabkey API. Currently, the code to read data from labkey has not been developed and labkey is automatically set to FALSE.
-  if (labkey) {
-    warning('The code to handle Labkey = TRUE has not been implemented yet. Labkey is set to FALSE.')
-    labkey = FALSE
-  }
+CleanUpChromatograms <- function(chromatogram.path = NULL,
+                                 peak.boundary.path = NULL,
+                                 labkey.url.base = NULL,
+                                 labkey.url.path = NULL,
+                                 parallel = FALSE,
+                                 labkey = FALSE,
+                                 endogenous.label = "light",
+                                 standard.label = "heavy" ,
+                                 iRT.list = iRTList(), ... ) {
+
   if (!labkey) {
 
-    # error and warning handling ---------------------------------------
-
-    #   input errors: if the input are empty
-
-    error.input.format1 = simpleError("CleanUpChromatograms: Input chromatogram file should not be empty")
-    error.input.format2 = simpleError("CleanUpChromatograms: Input peak boundary file should not be empty")
-    error.input.format3 = simpleError("CleanUpChromatograms: For each chromatograph file in chromatogram.path, there should be a peak boundary file in peak.boundary.path with an identical file name and vice versa")
-
     # chromgram.path and peak.boundary.path can only be NULL if the code is being run on labkey.
+    if (is.null(chromatogram.path)){
+      errorReporting("Input chromatogram file should not be empty")
+    }
 
-    if (is.null(chromatogram.path)) stop(error.input.format1)
-    if (is.null(peak.boundary.path)) stop(error.input.format2)
+    if (is.null(peak.boundary.path)){
+      errorReporting("Input peak boundary file should not be empty")
+    }
 
+    input.data <- loadData(chrom.Path = chromatogram.path,
+                           peak.Path = peak.boundary.path)
 
-    # check the names of files in chromatogram.path and peak.boundary.path
+    chrom.data <- combineChromPeak(chrom = input.data$chrom,
+                                   peak = input.data$peak.boundary,
+                                   lvls = c(endogenous.label, standard.label))
 
-    chromatogram.files <- sort(list.files(chromatogram.path,pattern = "\\.tsv"))
-    chromatogram.files <- unlist(lapply(chromatogram.files,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)[[1]] - 1)))
-
-    peak.boundary.files <- sort(list.files(peak.boundary.path,pattern = "\\.csv"))
-    peak.boundary.files <- unlist(lapply(peak.boundary.files,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)[[1]] - 1)))
-
-    if (!identical(chromatogram.files,peak.boundary.files)) stop(error.input.format3)
-
-    # read the chromatrogram files
-
-    chrom <- setDT(rbindlist(lapply(chromatogram.files,
-                                    function(chromatogram.file) {
-                                      chromatogram.file.path <- file.path(chromatogram.path,paste0(chromatogram.file,".tsv"))
-                                      tmp <- unique(read.table(chromatogram.file.path,sep = "\t", header = TRUE))
-                                      tmp$File <- chromatogram.file
-                                      return(tmp)
-                                }
-                        )
-      )
-    )
-
-
-    # convert isotopelabeltypes to light and heavy. Only these two values are acceptable:
-
-    chrom$IsotopeLabelType <-  tolower(chrom$IsotopeLabelType)
-    chrom$IsotopeLabelType <- factor(chrom$IsotopeLabelType,levels = c(endogenous.label,standard.label))
-
-    # check if each FragmentIon/Peptide pair is represented by both endogenous and standard labels in each sample
-
-    tmp <- chrom %>%
-      select(File,FileName,PeptideModifiedSequence,PrecursorCharge,FragmentIon,ProductCharge,IsotopeLabelType, TotalArea) %>%
-      spread(IsotopeLabelType,TotalArea)
-
-    tmp <- as.data.frame(tmp)
-
-    tmp$RemoveIsotopePair <- FALSE
-    tmp[is.na(tmp[,endogenous.label]) | is.na(tmp[,standard.label]),"RemoveIsotopePair"] <- TRUE
-
-    chrom <- chrom %>%
-      left_join(tmp[,!colnames(tmp) %in% c(endogenous.label,standard.label,"<NA>")],by = c("File","FileName","PeptideModifiedSequence","PrecursorCharge","FragmentIon","ProductCharge"))
-
-    # mark the rows with any isotopelabeltype except endogenous. and standard.label are marked for removal
-    chrom[is.na(chrom$IsotopeLabelType),"RemoveIsotopePair"] <- TRUE
-
-    # read the peak boundary file
-
-    peak.boundary <- setDT(rbindlist(lapply(peak.boundary.files,
-                                            function(peak.boundary.file) {
-                                              peak.boundary.file.path <- file.path(peak.boundary.path,paste0(peak.boundary.file,".csv"))
-                                              tmp <- unique(read.csv(peak.boundary.file.path,sep = ",", header = TRUE))
-                                              tmp$File <- peak.boundary.file
-                                              return(tmp)
-                                    }
-                        )
-      )
-    )
-
-    peak.boundary <- as.data.frame(peak.boundary)
-
-    if (nrow(chrom) == 0) stop(error.input.format1)
-    if (nrow(peak.boundary) == 0) stop(error.input.format2)
-
-
-    # change the column names of the peak boundary
-    colnames(peak.boundary) = gsub("\\.","",colnames(peak.boundary))
-
-    # change the column names of the chrom
-    colnames(chrom) = gsub("\\.","",colnames(chrom))
-
-
-    # change the class of time columns to numeric
-    numeric.cols = c("MinStartTime","MaxEndTime")
-
-    peak.boundary[,numeric.cols] = apply(peak.boundary[,numeric.cols],2,function(x) as.numeric(as.character(x)))
-
-
-    # mark the peaks with missing peak boundaries or the ones with multiple peak boundaries for removal. Note that sometimes skyline exports multiple lines for a peak, where one line is NA. In these cases, I keep the non-NA line and remove the NA line as redundant.
-    peak.boundary <- unique(peak.boundary)
-    peak.boundary$RemovePeakBoundary <- FALSE
-    peak.boundary$Redundant <- FALSE
-
-    peak.boundary <- peak.boundary %>% group_by(FileName,File,PeptideModifiedSequence) %>% mutate(n = n())
-    peak.boundary[(is.na(peak.boundary$MinStartTime) | is.na(peak.boundary$MaxEndTime)) & (peak.boundary$n > 1),"Redundant"] <- TRUE
-    peak.boundary <- peak.boundary[!peak.boundary$Redundant,] %>% select(-Redundant)
-
-    peak.boundary <- peak.boundary %>% group_by(FileName,File,PeptideModifiedSequence) %>% mutate(n = n())
-    peak.boundary[is.na(peak.boundary$MinStartTime) | is.na(peak.boundary$MaxEndTime) | (peak.boundary$n > 1),"RemovePeakBoundary"] <- TRUE
-
-    peak.boundary <- peak.boundary %>% select(-n)
-
-    # merge peak boundary and chromatrogram
-    data <- chrom %>% left_join(peak.boundary,by = c("File","FileName","PeptideModifiedSequence","PrecursorCharge"))
-
-    data$Remove <- data$RemoveIsotopePair | data$RemovePeakBoundary
-
+    # numeric.cols = c("MinStartTime","MaxEndTime")
   }
 
   # Rows where peak boundaries are NA are separated into a data frame and returned as output.
+  removed <- chrom.data[Remove == T | PeptideModifiedSequence %in% iRT.list,.
+                        (File, FileName, PeptideModifiedSequence, PrecursorCharge,
+                          FragmentIon, ProductCharge, IsotopeLabelType, MinStartTime,
+                          MaxEndTime)]
+  chrom.data <- chrom.data[Remove != T & !PeptideModifiedSequence %in% iRT.list,
+                           .(FileName, PeptideModifiedSequence, PrecursorCharge,
+                            FragmentIon, ProductCharge, IsotopeLabelType, TotalArea,
+                            Times, Intensities, MinStartTime, MaxEndTime, File)]
 
-  removed <- data %>%
-    filter(Remove | PeptideModifiedSequence %in% iRT.list) %>%
-    select(File,FileName,PeptideModifiedSequence,PrecursorCharge,FragmentIon,ProductCharge,IsotopeLabelType,MinStartTime,MaxEndTime,RemoveIsotopePair,RemovePeakBoundary,Remove)
-
-  data <- data %>% filter(!Remove & !(PeptideModifiedSequence %in% iRT.list)) %>%
-    select(FileName,PeptideModifiedSequence,PrecursorCharge,FragmentIon,ProductCharge,IsotopeLabelType,TotalArea,Times,Intensities,MinStartTime,MaxEndTime,File)
-
-  #
-  if (nrow(data) == 0) {
-    warnings("data is not appropriately formatted for TargetedMSQC. Please check the RemoveIsotopePair and RemovePeakBoundary columns in output$removed.")
+  if (nrow(chrom.data) == 0) {
+    errorReporting("Input data is not appropriately formatted for TargetedMSQC. Please check the RemoveIsotopePair and RemovePeakBoundary columns in output$removed.")
   } else {
     # substitute NA values in the TotalArea column with 0.
-
-    if (sum(is.na(data$TotalArea)) > 0) {
+    if (nrow(chrom.data[is.na(TotalArea)]) > 0) {
       warnings("NA values are detected in the peak area column of the input and replaced with 0")
-      data$TotalArea[is.na(data$TotalArea)] = 0
+      chrom.data[is.na(TotalArea), TotalArea := 0]
     }
 
 
     # build the chromatogram group for each (File,FileName,peptide,precursorcharge) trio
-
-    peak.groups = data %>%
+    data <- chrom.data %>%
       group_by(File,FileName,PeptideModifiedSequence,PrecursorCharge) %>%
-      do(ChromGroup = BuildPeakGroup(.))
-
-    data = unique(merge(data,peak.groups))
+      do(ChromGroup = BuildPeakGroup(.)) %>%
+      right_join(chrom.data)
 
     # build the peak group for each (File,FileName,peptide,precursorcharge) trio: the only difference with the chromatogram group is that the peak boundaries are applied.
 
@@ -227,7 +215,7 @@ CleanUpChromatograms <- function(chromatogram.path = NULL, peak.boundary.path = 
     data <- data %>% filter(!is.na(PeakGroup))
 
     # add the peak area column to the data frame
-    data$PeakArea <- NULL
+    data$PeakArea <- NA
     for (i in 1:nrow(data)) {
       tmp <- paste(data$FragmentIon[[i]],data$ProductCharge[[i]],data$IsotopeLabelType[[i]],sep = ".")
       data$PeakArea[i] <- data$PeakGroup[[i]]@area[[tmp]]
