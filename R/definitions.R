@@ -21,10 +21,10 @@ dataframeORnumeric <- setClassUnion("dataframeORnumeric", c("data.frame", "numer
 #' peak@@area
 
 peakObj <- setClass("peakObj",slots =
-                       c(time = "numeric",
-                         sig = "dataframeORnumeric",
-                         area = "numeric")
-                     )
+                      c(time = "numeric",
+                        sig = "dataframeORnumeric",
+                        area = "numeric")
+)
 
 # helper validate peak function
 
@@ -45,18 +45,18 @@ validPeakObject <- function(object) {
 
   # Check if the number of time points and data points in the signal are equal
   if(time.points != sig.points) {
-      paste("Unequal time and sig lengths: ",time.points, ", ",sig.points,sep = "")
-      return(FALSE)
+    paste("Unequal time and sig lengths: ",time.points, ", ",sig.points,sep = "")
+    return(FALSE)
 
-  # Check if the number of transitions and signal columns are equal
+    # Check if the number of transitions and signal columns are equal
   } else if(sig.transitions != length(object@area)) {
-      paste("Unequal number of transitions in sig and area: ",sig.transitions, ", ",length(object@area),sep = "")
-      return(FALSE)
+    paste("Unequal number of transitions in sig and area: ",sig.transitions, ", ",length(object@area),sep = "")
+    return(FALSE)
 
     # The peak requires at least 4 time points for the peak QC functions to work.
   } else if (time.points < 4) {
-      paste("Peak requires at least 4 time points. Time points: ", length(object@time), sep="")
-      return(FALSE)
+    paste("Peak requires at least 4 time points. Time points: ", length(object@time), sep="")
+    return(FALSE)
   } else return(TRUE)
 }
 
@@ -113,13 +113,13 @@ BuildPeakGroup <- function(df,...) {
 
   # if time is longer than x, pad x with extra 0s. If x is longer than time, cut it to match the length of the time vector
   tmp <- lapply(tmp, function(x)
-      {
-        d <- length(time) - length(x)
-        if (d > 0) {x <- c(x,rep(0,length(time) - length(x)))}
-        if (d < 0) {x <- x[1:length(time)]}
-        return(x)
-      }
-    )
+  {
+    d <- length(time) - length(x)
+    if (d > 0) {x <- c(x,rep(0,length(time) - length(x)))}
+    if (d < 0) {x <- x[1:length(time)]}
+    return(x)
+  }
+  )
 
   peak.sig <- data.frame(tmp)
 
@@ -127,48 +127,61 @@ BuildPeakGroup <- function(df,...) {
   # input format error
   if (length(time) != nrow(peak.sig) || length(time)*dim(peak.sig)[1]*dim(peak.sig)[2] == 0) stop(error.input.format)
   # modifying the peak names
-  identifying.cols <- colnames(df)[colnames(df) %in% c("FragmentIon","IsotopeLabelType","ProductCharge")]
+  identifying.cols <- names(df)[names(df) %in% c("FragmentIon","IsotopeLabelType","ProductCharge")]
   if (length(identifying.cols) > 0) {
-    columns <- unite_(df,"PeakName",identifying.cols,sep = ".")$PeakName
+    columns <- tidyr::unite_(df,"PeakName",identifying.cols,sep = ".")$PeakName
+    # columns <- paste(df$FragmentIon, df$IsotopeLabelType, df$ProductCharge,
+    #                  sep = ".")
     colnames(peak.sig) <- columns
   }
 
- # Total area
-#  area <- as.numeric(df$TotalArea)
-#  names(area) <- columns
+  # Total area
+  #  area <- as.numeric(df$TotalArea)
+  #  names(area) <- columns
 
   # calculate peak area using the trapozoidal approximation
   area <- sapply(peak.sig,function(x) pracma::trapz(time,x))
 
 
- # identifying missing peaks
- # peaks that do not have their pair
+  # identifying missing peaks
+  # peaks that do not have their pair
+  # peaks <- data.table::data.table(columns)
+  # peaks[, peak := gsub("\\.\\d+","", columns)]
+  # sp <- peaks[,.N, peak][, single := ifelse(N<=1,T,F)]
+  # peaks <- merge(peaks, sp, by = 'peak')
 
- single.peaks <- columns[which(mapply(function(x,columns) sum(grepl(substr(x,1,regexpr("\\.[^\\.]*$", x)),columns)),columns,list(columns)) != 2)]
+  single.peaks <- columns[which(
+    mapply(function(x,columns){
+      sum(grepl(substr(x,1,regexpr("\\.[^\\.]*$", x)),columns))
+    }, columns, list(columns)) != 2
+    )]
 
- all.isotopes <- unique(df$IsotopeLabelType)
+  all.isotopes <- unique(as.character(df$IsotopeLabelType))
 
- if (length(single.peaks) > 0) {
+  if (length(single.peaks) >0) {
 
-   # isotope label of the missing peaks
-   missing.isotopes <- mapply(function(x,all.isotopes) all.isotopes[which(all.isotopes != substr(x,regexpr("\\.[^\\.]*$", x) + 1,nchar(x)))],single.peaks,list(all.isotopes))
+    # isotope label of the missing peaks
+    missing.isotopes <- mapply(function(x,all.isotopes){
+      all.isotopes[which(all.isotopes != substr(x,regexpr("\\.[^\\.]*$", x) + 1,nchar(x)))]
+    } ,single.peaks,list(all.isotopes))
 
-   # names of the missing peaks
-   missing.peaks <- sapply(single.peaks,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)))
+    # names of the missing peaks
 
-   # colnames of the missing peaks that are to be imputated by zero
-   imputed.peaks <- paste(missing.peaks,missing.isotopes,sep = "")
+    missing.peaks <- sapply(single.peaks,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)))
 
-
-   # imputing the peak.sig and total area with vectors of 0s for missing peaks
-   for (column in imputed.peaks) {
-     peak.sig[,column] <- rep(0,nrow(peak.sig))
-     area[column] <- 0
-   }
- }
+    # colnames of the missing peaks that are to be imputated by zero
+    imputed.peaks <- paste(missing.peaks,missing.isotopes,sep = "")
 
 
- # create the output peakObj object
+    # imputing the peak.sig and total area with vectors of 0s for missing peaks
+    for (column in imputed.peaks) {
+      peak.sig[,column] <- rep(0,nrow(peak.sig))
+      area[column] <- 0
+    }
+  }
+
+
+  # create the output peakObj object
   peakgroup <- peakObj(
     time = time,
     sig = peak.sig,
