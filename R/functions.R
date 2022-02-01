@@ -202,6 +202,76 @@ applyPeakBoundary <- function(chromGroup, minStartTime, maxEndTime){
 
 }
 
-peakArea <- function(x){
-  paste(x$FragmentIon, x$ProductCharge, x$IsotopeLabelType)
+peakArea <- function(x, req=NA){
+  req <- unique(req)
+  if(is.na(req)){
+    req <- paste(x$FragmentIon, x$ProductCharge, x$IsotopeLabelType, sep = '.')
+    x$PeakGroup[[1]][['area']][[req]]
+  }else{
+    do.call('c',lapply(seq_along(x), function(y){
+      x[[y]][['area']][[req]]
+    }))
+  }
+}
+
+plot_chrom <- function(peak, font.size = 14, transition.list = NA, label.list = NA,
+                       split.label = TRUE){
+
+  pdt <- data.table( peak$sig, 'time' = peak$time)
+  pdt <- melt(pdt, id.vars = 'time')
+  pdt[, transition := gsub('(.*)\\.\\w+', '\\1', variable)]
+  pdt[, label := gsub(".*\\.","", variable)]
+
+  if(!is.na(transition.list)){
+    pdt <- pdt[transition %in% transition.list]
+  }
+
+  if(!is.na(label.list)){
+    pdt <- pdt[label %in% label.list]
+  }
+
+  p <- ggplot(data = pdt,
+              aes(x = time, y = value, color = transition, linetype = label))+
+    geom_line()+
+    theme_bw()+
+    labs(x = "Retention Time (mins)", y = "Intensities", color = 'Transition',
+         linetype = '')+
+    scale_linetype_manual(values = c("solid", "twodash")) +
+    theme(text = element_text(size = font.size))
+
+  if(split.label){
+    p <- p+facet_wrap(~toupper(label), scales = 'free')
+  }
+  p
+}
+
+ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
+                            endogenous.label = "light", standard.label = "heavy",
+                            export.features = FALSE, feature.path = "", ...) {
+
+  if(!is.na(blanks)){
+    stop('What is blank?')
+  } else {
+    data[, aboveThreshold := PeakArea > intensity.threshold]
+  }
+
+  packageStartupMessage("Calculating Features ...", appendLF = F)
+  data[, ':='(
+    PeakGroupJaggedness.r = lapply(PeakGroup, CalculatePeakJaggedness),
+    PeakGroupSymmetry.r = lapply(PeakGroup, CalculatePeakSymmetry),
+    PeakGroupSimilarity.r = lapply(PeakGroup, CalculatePeakShapeSimilarity),
+  )]
+
+  data[, ':='(
+    PeakGroupJaggedness.m = unlist(lapply(PeakGroupJaggedness.r, mean, na.rm = T)),
+    PeakGroupSymmetry.m = unlist(lapply(PeakGroupSymmetry.r, mean, na.rm = T)),
+    PeakGroupSimilarity.m = unlist(lapply(PeakGroupSimilarity.r, mean, na.rm = T))
+  )]
+  packageStartupMessage(" Done..(Peak Jaggedness, Symmetry, Similarity)")
+
+  packageStartupMessage("Calculating Peak Symmetry ...", appendLF = F)
+  data[,  PeakGroupShift.r := lapply(PeakGroup, CalculatePeakElutionShift)]
+  packageStartupMessage(" Done..(Peak Elution Shift)")
+
+
 }
