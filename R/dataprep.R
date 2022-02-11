@@ -139,11 +139,12 @@ CleanUpChromatograms <- function(chromatogram.path = NULL,
     tmp[, ':='(FragmentIon = 'sum', ProductCharge = 0L, Times = NA, Intensities = NA,
                ChromGroup = NA)]
     tmp <- rbind(
-      tmp[, IsotopeLabelType := endogenous.label],
-      tmp[, IsotopeLabelType := standard.label]
+      copy(tmp)[,IsotopeLabelType := endogenous.label],
+      copy(tmp)[,IsotopeLabelType := standard.label]
     )
 
-    tmp[, SumArea := peakArea(PeakGroup, req = paste0('sum.0.', IsotopeLabelType)), by = .I]
+    tmp[, SumArea := peakArea(PeakGroup, req = paste0('sum.0.', IsotopeLabelType)),
+        by = .(File, FileName, PeptideModifiedSequence, PrecursorCharge, IsotopeLabelType)]
     tmp[, PeakArea := SumArea]
 
     chrom.data[, TotalArea := NULL]
@@ -183,420 +184,420 @@ CleanUpChromatograms <- function(chromatogram.path = NULL,
 #'                                 export.features = FALSE,
 #'                                 intensity.threshold = 1000)
 
-ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 100000,
-                            endogenous.label = "light", standard.label = "heavy",
-                            export.features = FALSE, feature.path = "", ...) {
-
-
-
-  # if the dataset includes blank sample, use those to estimate the intensity at
-  # lloq by mean(intensity) + 10*sd(intensity) and mark what measurements are
-  # above the lloq level. If blanks are not available, just use the default
-  # value of 1e6 as your threshold. Based on looking at a dataset ~90% of
-  # peptides have an lloq.intesnity below 1e6 for individual fragment ions.
-  if (!is.na(blanks)) {
-    message("Checking for blank samples")
-    blank <- suppressMessages(data %>%
-      filter(interaction(File, FileName) %in% interaction(blanks$File, blanks$FileName)) %>%
-      group_by(File, PeptideModifiedSequence, PrecursorCharge, IsotopeLabelType,
-               FragmentIon, ProductCharge) %>%
-      summarise(lloq.intensity = mean(PeakArea) + 10*sd(PeakArea)))
-
-    data <- data %>%
-      left_join(blank, by = c("File", "PeptideModifiedSequence", "PrecursorCharge",
-                              "IsotopeLabelType", "FragmentIon", "ProductCharge"))
-
-   data$aboveThreshold = data$PeakArea > data$lloq.intensity
-   data = data %>% select(-lloq.intensity)
-  }
-  else {
-    data$aboveThreshold = data$PeakArea > intensity.threshold
-  }
-
-
-
-
-  packageStartupMessage("Calculating Peak Group Jaggedness ...", appendLF = F)
-  # calculate jaggedness for each peak group
-  tmp = sapply(data$PeakGroup,CalculatePeakJaggedness)
-  data$PeakGroupJaggedness.r = tmp[1,]
-  data$PeakGroupJaggedness.m = as.numeric(tmp[2,])
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Peak Symmetry ...", appendLF = F)
-  # calculate symmetry for each peak group
-  tmp = sapply(data$PeakGroup,CalculatePeakSymmetry)
-  data$PeakGroupSymmetry.r = tmp[1,]
-  data$PeakGroupSymmetry.m = as.numeric(tmp[2,])
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Peak Shape Similarity ...", appendLF = F)
-  # calculate shape similarity for each peak group
-  tmp = sapply(data$PeakGroup,CalculatePeakShapeSimilarity)
-  data$PeakGroupSimilarity.r = tmp[1,]
-  data$PeakGroupSimilarity.m = as.numeric(tmp[2,])
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Peak Elution Shift ...", appendLF = F)
-  # calculate the elution shift for each peak group using the CalculatePeakElutionShift method
-  tmp = sapply(data$PeakGroup,CalculatePeakElutionShift)
-  data$PeakGroupShift.r = tmp
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating FWHM ...", appendLF = F)
-  # calculate fwhm and fwhm2base ratio for each peak group
-  tmp = sapply(data$PeakGroup,CalculateFWHM)
-  data$PeakGroupFWHM.r = tmp[1,]
-  data$PeakGroupFWHM.m = as.numeric(tmp[2,])
-  data$PeakGroupFWHM2base.r = tmp[3,]
-  data$PeakGroupFWHM2base.m = as.numeric(tmp[4,])
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Peak group Modality ...", appendLF = F)
-  # calculate modality for each peak group
-  tmp = sapply(data$PeakGroup,CalculateModality)
-  data$PeakGroupModality.r = tmp[1,]
-  data$PeakGroupModality.m = as.numeric(tmp[2,])
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Peak Max Intensity for each transition ...",
-                        appendLF = F)
-  # calculate max intensity for each transition
-  tmp = sapply(data$PeakGroup,CalculatePeakMaxIntensity)
-  data$TransitionMaxIntensity = mapply(function(r,trn) r[trn],
-                                       tmp,
-                                       trn = paste(data$FragmentIon,
-                                                   data$ProductCharge,
-                                                   data$IsotopeLabelType, sep = "."))
-  packageStartupMessage(" Done")
-
-  packageStartupMessage("Calculating Max Boundary Intensity for each transition ...",
-                        appendLF = F)
-  # calculate max intensity at boundary for each transition
-  tmp = sapply(data$PeakGroup,CalculateMaxBoundaryIntensity)
-  data$TransitionMaxBoundaryIntensity = mapply(function(r,trn) r[trn],
-                                               tmp,
-                                               trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-  packageStartupMessage(" Done")
-
-  message("Normalized Intensities for each transition")
-  # calculate max intensity at boundary normalized by max intensity for each transition
-  data$TransitionMaxBoundaryIntensityNormalized = data$TransitionMaxBoundaryIntensity/data$TransitionMaxIntensity
-
-  message("Imputing 0 for Nan values")
-  # impute TransitionMaxBoundaryIntensityNormalized values of NaN to 0. This happens transition is all zeros.
-  data$TransitionMaxBoundaryIntensityNormalized[!is.finite(data$TransitionMaxBoundaryIntensityNormalized)] <- 0
-
-  message("Extracting Jaggedness for each transition")
-  # extract jaggedness for each transition from the jaggedness.r matrix
-  data$TransitionJaggedness = mapply(function(r,trn) r[trn],
-                                     data$PeakGroupJaggedness.r,
-                                     trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting symmetry for each transition")
-  # extract symmetry  for each transition from the symmetry.r matrix
-  data$TransitionSymmetry = mapply(function(r,trn) r[trn],
-                                   data$PeakGroupSymmetry.r,
-                                   trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting shift for each transition")
-  # extract shift for each transition from shift.r matrix using
-  data$TransitionShift = mapply(function(r,trn) r[trn,trn],
-                                data$PeakGroupShift.r,
-                                trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting similarity betwen light and heavy for each transition")
-  # extract similarity between light and heavy isotope for each transition from the similarity.r matrix
-  data$PairSimilarity = mapply(function(r,trn.endg,trn.std) r[trn.endg,trn.std],
-                               data$PeakGroupSimilarity.r,
-                               trn.endg = paste(data$FragmentIon,data$ProductCharge,endogenous.label,sep = "."),
-                               trn.std = paste(data$FragmentIon,data$ProductCharge,standard.label,sep = "."))
-
-  message("Extracting elution shift between light and heavy for each transitio")
-  # extract elution shift between light and heavy isotope for each transition from the shift.r matrix
-  data$PairShift = mapply(function(r,trn.endg,trn.std) r[trn.endg,trn.std],
-                          data$PeakGroupShift.r,
-                          trn.endg = paste(data$FragmentIon,data$ProductCharge,endogenous.label,sep = "."),
-                          trn.std = paste(data$FragmentIon,data$ProductCharge,standard.label,sep = "."))
-
-  message("Extracting FWHM2base for each transition")
-  # extract fwhm2base  for each transition from the fwhm2base.r matrix
-  data$TransitionFWHM2base = mapply(function(r,trn) r[trn],
-                                    data$PeakGroupFWHM2base.r,
-                                    trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting FWHM from each transtion")
-  # extract fwhm  for each transition from the fwhm.r matrix
-  data$TransitionFWHM = mapply(function(r,trn) r[trn],
-                               data$PeakGroupFWHM.r,
-                               trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting Modality from each transition")
-  # extract modality  for each transition from the modality.r matrix
-  data$TransitionModality = mapply(function(r,trn) r[trn],
-                                   data$PeakGroupModality.r,
-                                   trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
-
-  message("Extracting average jaggedness for all light and heavy transitios")
-  # extract average jaggedness  for all light (heavy) transitions in each peak group from the jaggedness.r matrix
-  data$IsotopeJaggedness = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
-                                  data$PeakGroupJaggedness.r,
-                                  isotope = data$IsotopeLabelType)
-
-  message("Extracting average symmetry for all light and heavy transitions")
-  # extract average symmetry  for all light (heavy) transitions in each peak group from the symmetry.r matrix
-  data$IsotopeSymmetry = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
-                                data$PeakGroupSymmetry.r,
-                                isotope = data$IsotopeLabelType)
-
-  message("Extracting average similarity for all light and heavy transitions")
-  # extract average similarity  for all light (heavy) transitions in each peak group from the similarity.r matrix
-  data$IsotopeSimilarity = mapply(function(r,isotope) round(mean(abs(r[grep(isotope,colnames(r)),grep(isotope,rownames(r))])),digits = 4),
-                                  data$PeakGroupSimilarity.r,
-                                  isotope = data$IsotopeLabelType)
-
-  message("Extract average co-elution for all light and heavy transitions")
-  # extract average co-elution  for all light (heavy) transitions in each peak group from the shift.r matrix
-  data$IsotopeShift = mapply(function(r,isotope) round(mean(diag(matrix(abs(r[grep(isotope,colnames(r)),grep(isotope,rownames(r))])))),digits = 4),
-                             data$PeakGroupShift.r,
-                             isotope = data$IsotopeLabelType)
-
-  message("Extracting average FWHM2base for all light and heavy transitions")
-  # extract average fwhm2base  for all light (heavy) transitions in each peak group from the fwhm2base.r matrix
-  data$IsotopeFWHM2base = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
-                                 data$PeakGroupFWHM2base.r,
-                                 isotope = data$IsotopeLabelType)
-
-  # extract average fwhm  for all light (heavy) transitions in each peak group from the fwhm.r matrix
-  data$IsotopeFWHM = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
-                            data$PeakGroupFWHM.r,
-                            isotope = data$IsotopeLabelType)
-
-  # extract average modality  for all light (heavy) transitions in each peak group from the modality.r matrix
-  data$IsotopeModality = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
-                                data$PeakGroupModality.r,
-                                isotope = data$IsotopeLabelType)
-  # extract average co-elution  for all transitions in each peak group from the shift.r matrix
-  data$PeakGroupShift = sapply(data$PeakGroupShift.r, function(r) round(mean(diag(abs(r))),digits = 4))
-
-
-  # calculate the center for each peak which is equivalent to RT for the peak
-  data$PeakCenter = (data$MaxEndTime + data$MinStartTime)/2
-
-  # calculate the ratio consistency between the endogenous and standard for each sample and peptide and tranistion:
-  # PairRatioConsistency =  abs(endogenous - standard)/standard
-  # Area2SumRatio is the ratio of eahc transition to sum of all transitions in each sample for endogenous and standard isotopes
-
-  data = data %>% ungroup()
-
-  data = data %>%
-    mutate(Area2SumRatio = PeakArea/SumArea)
-
-  # impute Area2SumRaio values of NaN to 0. This happens when all the peaks are zero resulting in a SumArea of 0.
-  data$Area2SumRatio[!is.finite(data$Area2SumRatio)] <- 0
-
-  tmp = data %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, Area2SumRatio, IsotopeLabelType) %>%
-    tidyr::spread(key = IsotopeLabelType,value = Area2SumRatio)
-
-  colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
-  colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
-
-  data = tmp %>%
-    mutate(PairRatioConsistency = abs(endogenous - standard)/standard) %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, PairRatioConsistency) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "FragmentIon",
-                           "PrecursorCharge", "ProductCharge", "FileName", "File"))
-
-  # impute the values that are not finite (NA,NaN (0/0) and Inf (number/0)) to the maximum observed for PairRatioConsistency
-  data$PairRatioConsistency[!is.finite(data$PairRatioConsistency)] <- max(data$PairRatioConsistency[is.finite(data$PairRatioConsistency)],na.rm = TRUE)
-
-
-  # calculate the peak width consistency between the light and heavy for each sample and peptide and tranistion
-  # PairFWHMConsistency: abs(endogenous - standard)/standard
-  tmp = data %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, TransitionFWHM, IsotopeLabelType) %>%
-    tidyr::spread(key = IsotopeLabelType,value = TransitionFWHM)
-
-  colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
-  colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
-
-  data = tmp %>%
-    mutate(PairFWHMConsistency = abs(endogenous - standard)/standard) %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, PairFWHMConsistency) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
-                           "ProductCharge", "FileName", "File"))
-
-  # impute the values that are not finite (NA,NaN (0/0) and Inf (number/0)) to the maximum observed for PairFWHMConsistency
-  data$PairFWHMConsistency[!is.finite(data$PairFWHMConsistency)] <- max(data$PairFWHMConsistency[is.finite(data$PairFWHMConsistency)],na.rm = TRUE)
-
-  # calculate the area ratio consistency of each transition with average of area ratios in all samples
-  # MeanArea2SumRatio: mean of Area2SumRatio across all samples is calculated for each transition and isotope label.
-  # MeanIsotopeRatioConsistency: abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio)
-  data = suppressMessages(data %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, Area2SumRatio, IsotopeLabelType, aboveThreshold) %>%
-    filter(aboveThreshold) %>%
-    group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon,
-             ProductCharge, IsotopeLabelType) %>%
-    summarise(MeanArea2SumRatio = mean(Area2SumRatio)) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
-                           "ProductCharge", "IsotopeLabelType", "File")))
-
-  data = data %>%
-    mutate(MeanIsotopeRatioConsistency = abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio)
-
-  # impute the NA MeanIsotopeRatioConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is too low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
-  data$MeanIsotopeRatioConsistency[!is.finite(data$MeanIsotopeRatioConsistency)] <- max(data$MeanIsotopeRatioConsistency[is.finite(data$MeanIsotopeRatioConsistency)],na.rm = TRUE)
-
-
-  # calculate the peak width consistency of each transition with average of peak widths in all samples
-  # MeanTransitionFWHM: mean of TransitionFWHM across all samples is calculated for each transition and isotope label.
-  # MeanIsotopeFWHMConsistency: abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM)
-  data = suppressMessages(data %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, TransitionFWHM, IsotopeLabelType, aboveThreshold) %>%
-    filter(aboveThreshold) %>%
-    group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon,
-             ProductCharge, IsotopeLabelType) %>%
-    summarise(MeanTransitionFWHM = mean(TransitionFWHM)) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
-                           "ProductCharge", "IsotopeLabelType", "File")))
-
-  data = data %>%
-    mutate(MeanIsotopeFWHMConsistency = abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM)
-
-  # impute the NA MeanIsotopeFWHMConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is to low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
-  data$MeanIsotopeFWHMConsistency[!is.finite(data$MeanIsotopeFWHMConsistency)] <- max(data$MeanIsotopeFWHMConsistency[is.finite(data$MeanIsotopeFWHMConsistency)],na.rm = TRUE)
-
-
-  # calculate the peak center (RT) consistency of each transition with average of RT in all samples
-  # MeanPeakCenter: mean of PeakCenter across all samples is calculated for each transition and isotope label.
-  # MeanIsotopeRTConsistency: abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter
-
-  data = suppressMessages(data %>%
-    select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
-           ProductCharge, PeakCenter, IsotopeLabelType, aboveThreshold) %>%
-    filter(aboveThreshold) %>%
-    group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon, ProductCharge,
-             IsotopeLabelType) %>%
-    summarise(MeanPeakCenter = mean(PeakCenter)) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
-                           "ProductCharge", "IsotopeLabelType", "File")))
-
-  data = data %>%
-    mutate(MeanIsotopeRTConsistency = abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter)
-
-  # impute the NA MeanIsotopeRTConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is to low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
-  data$MeanIsotopeRTConsistency[!is.finite(data$MeanIsotopeRTConsistency)] <- max(data$MeanIsotopeRTConsistency[is.finite(data$MeanIsotopeRTConsistency)],na.rm = TRUE)
-
-  # calculate the correlation between the light and heavy Area2SumRatios
-  # the sum transitions are first filtered out, and the correlation coefficiant between the Area2SumRatio of light and heavy isotopes are calculated for each peptide and sample
-  # also calculate the absolute value of log of Area2SumRatio between endogenous and standard. This helps identify transitions that have interference or different area ratios between the isotope pairs
-  tmp = data %>%
-    filter(FragmentIon != "sum") %>%
-    select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-           ProductCharge, IsotopeLabelType, Area2SumRatio) %>%
-    tidyr::spread(key = IsotopeLabelType,value = Area2SumRatio)
-
-  colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
-  colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
-
-  data = suppressMessages(tmp %>%
-    group_by(PeptideModifiedSequence, PrecursorCharge, FileName,File) %>%
-    summarise(PeakGroupRatioCorr = cor(endogenous, standard,method = "pearson")) %>%
-    right_join(data,by = c("PeptideModifiedSequence", "PrecursorCharge",
-                           "FileName", "File")))
-
-  # impute NA PeakGroupRatioCorr values to 0. The NA values are a result of all zero signals or peptides with only one transition
-  data$PeakGroupRatioCorr[is.na(data$PeakGroupRatioCorr)] <- 0
-
-  # calculate the endogenous to standard ratio for each transition
-  tmp = data %>%
-    select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-           ProductCharge, IsotopeLabelType, PeakArea) %>%
-    tidyr::spread(key = IsotopeLabelType,value = PeakArea)
-
-  colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
-  colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
-
-  data = tmp %>%
-    mutate(Endogenous2StandardRatio = endogenous/standard) %>%
-    select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-           ProductCharge, Endogenous2StandardRatio) %>%
-    right_join(data,by = c("File", "FileName", "PeptideModifiedSequence",
-                           "PrecursorCharge", "FragmentIon", "ProductCharge"))
-
-  # for each transition, calculate the CV% of the area to sum ration across all samples
-  data = suppressMessages(data %>%
-    select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-           ProductCharge, IsotopeLabelType, Area2SumRatio) %>%
-    group_by(File, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-             ProductCharge, IsotopeLabelType) %>%
-    mutate(Area2SumRatioCV = sd(Area2SumRatio, na.rm = TRUE)/mean(Area2SumRatio, na.rm = TRUE)) %>%
-    select(-Area2SumRatio) %>%
-    right_join(data,by = c("File", "FileName", "PeptideModifiedSequence",
-                           "PrecursorCharge", "FragmentIon", "ProductCharge", "IsotopeLabelType")))
-
-
-  # deactivate the cluster
-  if (parallel) stopCluster(cl)
-
-  # extract the feature columns
-  features = data %>%
-    select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
-           ProductCharge, IsotopeLabelType, Area2SumRatioCV, PeakGroupRatioCorr,
-           PairFWHMConsistency, PairRatioConsistency, PeakGroupJaggedness.m,
-           PeakGroupSymmetry.m, PeakGroupSimilarity.m, PeakGroupShift,
-           PeakGroupFWHM.m, PeakGroupFWHM2base.m, PeakGroupModality.m,
-           TransitionJaggedness, TransitionSymmetry, PairSimilarity, PairShift,
-           TransitionFWHM2base, TransitionFWHM, TransitionModality, IsotopeJaggedness,
-           IsotopeSymmetry, IsotopeSimilarity, IsotopeShift, IsotopeFWHM2base,
-           IsotopeFWHM, IsotopeModality, MeanIsotopeRatioConsistency,
-           MeanIsotopeFWHMConsistency, MeanIsotopeRTConsistency, TransitionMaxIntensity,
-           TransitionMaxBoundaryIntensity, TransitionMaxBoundaryIntensityNormalized,
-           TransitionShift)
-
-  # change the IsotopeLabelType to endogenous and standard
-
-  features$IsotopeLabelType <- as.character(features$IsotopeLabelType)
-  features$IsotopeLabelType[features$IsotopeLabelType == endogenous.label] = "endogenous"
-  features$IsotopeLabelType[features$IsotopeLabelType == standard.label] = "standard"
-  features$IsotopeLabelType <- factor(features$IsotopeLabelType,levels = c("endogenous","standard"))
-
-  # convert the feature.data to wide format
-  features.to.cast <- colnames(features)[!(colnames(features) %in% c("File","FileName","PeptideModifiedSequence","PrecursorCharge","FragmentIon","ProductCharge","IsotopeLabelType"))]
-
-  features <- data.table::dcast(
-    data.table::setDT(features), File + FileName + PeptideModifiedSequence +
-      PrecursorCharge + FragmentIon + ProductCharge ~ IsotopeLabelType,
-    value.var = features.to.cast)
-
-  # removing duplicated columns (this happens for the features where the values of standard and endogenous are identical e.g. the peakgroup features)
-  features <- features[ ,which(!duplicated(t(features))),with = FALSE]
-
-  message("Feature Extraction Complete!")
-  # if export.features is true save the features in the csv file specified by feature.path
-  if (export.features == TRUE) {
-    message("Exporting features to disk")
-    # template file name
-    feature.file <- file.path(feature.path,"features.csv")
-
-    # if the template path does not exist, create it
-    if (!dir.exists(feature.path)) {
-      dir.create(feature.path, showWarnings = TRUE, recursive = FALSE, mode = "0777")
-    }
-
-    write.table(features, file = feature.file, sep = ",",row.names = FALSE)
-  }
-  # return output
-  return(list(features = features))
-
-}
+# ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 100000,
+#                             endogenous.label = "light", standard.label = "heavy",
+#                             export.features = FALSE, feature.path = "", ...) {
+#
+#
+#
+#   # if the dataset includes blank sample, use those to estimate the intensity at
+#   # lloq by mean(intensity) + 10*sd(intensity) and mark what measurements are
+#   # above the lloq level. If blanks are not available, just use the default
+#   # value of 1e6 as your threshold. Based on looking at a dataset ~90% of
+#   # peptides have an lloq.intesnity below 1e6 for individual fragment ions.
+#   if (!is.na(blanks)) {
+#     message("Checking for blank samples")
+#     blank <- suppressMessages(data %>%
+#       filter(interaction(File, FileName) %in% interaction(blanks$File, blanks$FileName)) %>%
+#       group_by(File, PeptideModifiedSequence, PrecursorCharge, IsotopeLabelType,
+#                FragmentIon, ProductCharge) %>%
+#       summarise(lloq.intensity = mean(PeakArea) + 10*sd(PeakArea)))
+#
+#     data <- data %>%
+#       left_join(blank, by = c("File", "PeptideModifiedSequence", "PrecursorCharge",
+#                               "IsotopeLabelType", "FragmentIon", "ProductCharge"))
+#
+#    data$aboveThreshold = data$PeakArea > data$lloq.intensity
+#    data = data %>% select(-lloq.intensity)
+#   }
+#   else {
+#     data$aboveThreshold = data$PeakArea > intensity.threshold
+#   }
+#
+#
+#
+#
+#   # packageStartupMessage("Calculating Peak Group Jaggedness ...", appendLF = F)
+#   # # calculate jaggedness for each peak group
+#   # tmp = sapply(data$PeakGroup,CalculatePeakJaggedness)
+#   # data$PeakGroupJaggedness.r = tmp[1,]
+#   # data$PeakGroupJaggedness.m = as.numeric(tmp[2,])
+#   # packageStartupMessage(" Done")
+#   #
+#   # packageStartupMessage("Calculating Peak Symmetry ...", appendLF = F)
+#   # # calculate symmetry for each peak group
+#   # tmp = sapply(data$PeakGroup,CalculatePeakSymmetry)
+#   # data$PeakGroupSymmetry.r = tmp[1,]
+#   # data$PeakGroupSymmetry.m = as.numeric(tmp[2,])
+#   # packageStartupMessage(" Done")
+#   #
+#   # packageStartupMessage("Calculating Peak Shape Similarity ...", appendLF = F)
+#   # # calculate shape similarity for each peak group
+#   # tmp = sapply(data$PeakGroup,CalculatePeakShapeSimilarity)
+#   # data$PeakGroupSimilarity.r = tmp[1,]
+#   # data$PeakGroupSimilarity.m = as.numeric(tmp[2,])
+#   # packageStartupMessage(" Done")
+#   #
+#   # packageStartupMessage("Calculating Peak Elution Shift ...", appendLF = F)
+#   # # calculate the elution shift for each peak group using the CalculatePeakElutionShift method
+#   # tmp = sapply(data$PeakGroup,CalculatePeakElutionShift)
+#   # data$PeakGroupShift.r = tmp
+#   # packageStartupMessage(" Done")
+#
+#   # packageStartupMessage("Calculating FWHM ...", appendLF = F)
+#   # # calculate fwhm and fwhm2base ratio for each peak group
+#   # tmp = sapply(data$PeakGroup,CalculateFWHM)
+#   # data$PeakGroupFWHM.r = tmp[1,]
+#   # data$PeakGroupFWHM.m = as.numeric(tmp[2,])
+#   # data$PeakGroupFWHM2base.r = tmp[3,]
+#   # data$PeakGroupFWHM2base.m = as.numeric(tmp[4,])
+#   # packageStartupMessage(" Done")
+#   # packageStartupMessage("Calculating Peak group Modality ...", appendLF = F)
+#   # # calculate modality for each peak group
+#   # tmp = sapply(data$PeakGroup,CalculateModality)
+#   # data$PeakGroupModality.r = tmp[1,]
+#   # data$PeakGroupModality.m = as.numeric(tmp[2,])
+#   # packageStartupMessage(" Done")
+#
+#   # packageStartupMessage("Calculating Peak Max Intensity for each transition ...",
+#   #                       appendLF = F)
+#   # # calculate max intensity for each transition
+#   # tmp = sapply(data$PeakGroup,CalculatePeakMaxIntensity)
+#   # data$TransitionMaxIntensity = mapply(function(r,trn) r[trn],
+#   #                                      tmp,
+#   #                                      trn = paste(data$FragmentIon,
+#   #                                                  data$ProductCharge,
+#   #                                                  data$IsotopeLabelType, sep = "."))
+#   # packageStartupMessage(" Done")
+#   #
+#   # packageStartupMessage("Calculating Max Boundary Intensity for each transition ...",
+#   #                       appendLF = F)
+#   # # calculate max intensity at boundary for each transition
+#   # tmp = sapply(data$PeakGroup,CalculateMaxBoundaryIntensity)
+#   # data$TransitionMaxBoundaryIntensity = mapply(function(r,trn) r[trn],
+#   #                                              tmp,
+#   #                                              trn = paste(data$FragmentIon,
+#   #                                                          data$ProductCharge,
+#   #                                                          data$IsotopeLabelType,sep = "."))
+#   # packageStartupMessage(" Done")
+#   #
+#   # message("Normalized Intensities for each transition")
+#   # # calculate max intensity at boundary normalized by max intensity for each transition
+#   # data$TransitionMaxBoundaryIntensityNormalized = data$TransitionMaxBoundaryIntensity/data$TransitionMaxIntensity
+#   #
+#   # message("Imputing 0 for Nan values")
+#   # # impute TransitionMaxBoundaryIntensityNormalized values of NaN to 0. This happens transition is all zeros.
+#   # data$TransitionMaxBoundaryIntensityNormalized[!is.finite(data$TransitionMaxBoundaryIntensityNormalized)] <- 0
+#
+#   # message("Extracting Jaggedness for each transition")
+#   # # extract jaggedness for each transition from the jaggedness.r matrix
+#   # data$TransitionJaggedness = mapply(function(r,trn) r[trn],
+#   #                                    data$PeakGroupJaggedness.r,
+#   #                                    trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#   #
+#   # message("Extracting symmetry for each transition")
+#   # # extract symmetry  for each transition from the symmetry.r matrix
+#   # data$TransitionSymmetry = mapply(function(r,trn) r[trn],
+#   #                                  data$PeakGroupSymmetry.r,
+#   #                                  trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#   #
+#   # message("Extracting shift for each transition")
+#   # # extract shift for each transition from shift.r matrix using
+#   # data$TransitionShift = mapply(function(r,trn) r[trn,trn],
+#   #                               data$PeakGroupShift.r,
+#   #                               trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#   #
+#   # message("Extracting similarity betwen light and heavy for each transition")
+#   # # extract similarity between light and heavy isotope for each transition from the similarity.r matrix
+#   # data$PairSimilarity = mapply(function(r,trn.endg,trn.std) r[trn.endg,trn.std],
+#   #                              data$PeakGroupSimilarity.r,
+#   #                              trn.endg = paste(data$FragmentIon,data$ProductCharge,endogenous.label,sep = "."),
+#   #                              trn.std = paste(data$FragmentIon,data$ProductCharge,standard.label,sep = "."))
+#   #
+#   # message("Extracting elution shift between light and heavy for each transitio")
+#   # # extract elution shift between light and heavy isotope for each transition from the shift.r matrix
+#   # data$PairShift = mapply(function(r,trn.endg,trn.std) r[trn.endg,trn.std],
+#   #                         data$PeakGroupShift.r,
+#   #                         trn.endg = paste(data$FragmentIon,data$ProductCharge,endogenous.label,sep = "."),
+#   #                         trn.std = paste(data$FragmentIon,data$ProductCharge,standard.label,sep = "."))
+#   #
+#   # message("Extracting FWHM2base for each transition")
+#   # extract fwhm2base  for each transition from the fwhm2base.r matrix
+#   # data$TransitionFWHM2base = mapply(function(r,trn) r[trn],
+#   #                                   data$PeakGroupFWHM2base.r,
+#   #                                   trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#   #
+#   # message("Extracting FWHM from each transtion")
+#   # # extract fwhm  for each transition from the fwhm.r matrix
+#   # data$TransitionFWHM = mapply(function(r,trn) r[trn],
+#   #                              data$PeakGroupFWHM.r,
+#   #                              trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#
+#   # message("Extracting Modality from each transition")
+#   # # extract modality  for each transition from the modality.r matrix
+#   # data$TransitionModality = mapply(function(r,trn) r[trn],
+#   #                                  data$PeakGroupModality.r,
+#   #                                  trn = paste(data$FragmentIon,data$ProductCharge,data$IsotopeLabelType,sep = "."))
+#   #
+#   # message("Extracting average jaggedness for all light and heavy transitios")
+#   # extract average jaggedness  for all light (heavy) transitions in each peak group from the jaggedness.r matrix
+#   # data$IsotopeJaggedness = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
+#   #                                 data$PeakGroupJaggedness.r,
+#   #                                 isotope = data$IsotopeLabelType)
+#   #
+#   # message("Extracting average symmetry for all light and heavy transitions")
+#   # # extract average symmetry  for all light (heavy) transitions in each peak group from the symmetry.r matrix
+#   # data$IsotopeSymmetry = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
+#   #                               data$PeakGroupSymmetry.r,
+#   #                               isotope = data$IsotopeLabelType)
+#   #
+#   # message("Extracting average similarity for all light and heavy transitions")
+#   # extract average similarity  for all light (heavy) transitions in each peak group from the similarity.r matrix
+#   # data$IsotopeSimilarity = mapply(function(r,isotope) round(mean(abs(r[grep(isotope,colnames(r)),grep(isotope,rownames(r))])),digits = 4),
+#   #                                 data$PeakGroupSimilarity.r,
+#   #                                 isotope = data$IsotopeLabelType)
+#   #
+#   # message("Extract average co-elution for all light and heavy transitions")
+#   # # extract average co-elution  for all light (heavy) transitions in each peak group from the shift.r matrix
+#   # data$IsotopeShift = mapply(function(r,isotope) round(mean(diag(matrix(abs(r[grep(isotope,colnames(r)),grep(isotope,rownames(r))])))),digits = 4),
+#   #                            data$PeakGroupShift.r,
+#   #                            isotope = data$IsotopeLabelType)
+#
+#   # message("Extracting average FWHM2base for all light and heavy transitions")
+#   # # extract average fwhm2base  for all light (heavy) transitions in each peak group from the fwhm2base.r matrix
+#   # data$IsotopeFWHM2base = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
+#   #                                data$PeakGroupFWHM2base.r,
+#   #                                isotope = data$IsotopeLabelType)
+#   #
+#   # # extract average fwhm  for all light (heavy) transitions in each peak group from the fwhm.r matrix
+#   # data$IsotopeFWHM = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
+#   #                           data$PeakGroupFWHM.r,
+#   #                           isotope = data$IsotopeLabelType)
+#
+#   # extract average modality  for all light (heavy) transitions in each peak group from the modality.r matrix
+#   # data$IsotopeModality = mapply(function(r,isotope) round(mean(r[grep(isotope,names(r))]),digits = 4),
+#   #                               data$PeakGroupModality.r,
+#   #                               isotope = data$IsotopeLabelType)
+#   # extract average co-elution  for all transitions in each peak group from the shift.r matrix
+#   # data$PeakGroupShift = sapply(data$PeakGroupShift.r, function(r) round(mean(diag(abs(r))),digits = 4))
+#
+#
+#   # calculate the center for each peak which is equivalent to RT for the peak
+#   # data$PeakCenter = (data$MaxEndTime + data$MinStartTime)/2
+#
+#   # calculate the ratio consistency between the endogenous and standard for each sample and peptide and tranistion:
+#   # PairRatioConsistency =  abs(endogenous - standard)/standard
+#   # Area2SumRatio is the ratio of eahc transition to sum of all transitions in each sample for endogenous and standard isotopes
+#   # data = data %>% ungroup()
+#   #
+#   # data = data %>%
+#   #   mutate(Area2SumRatio = PeakArea/SumArea)
+#   #
+#   # # impute Area2SumRaio values of NaN to 0. This happens when all the peaks are zero resulting in a SumArea of 0.
+#   # data$Area2SumRatio[!is.finite(data$Area2SumRatio)] <- 0
+#
+#   # tmp = data %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, Area2SumRatio, IsotopeLabelType) %>%
+#   #   tidyr::spread(key = IsotopeLabelType,value = Area2SumRatio)
+#   #
+#   # colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
+#   # colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
+#   #
+#   # data = tmp %>%
+#   #   mutate(PairRatioConsistency = abs(endogenous - standard)/standard) %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, PairRatioConsistency) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "FragmentIon",
+#   #                          "PrecursorCharge", "ProductCharge", "FileName", "File"))
+#
+#   # impute the values that are not finite (NA,NaN (0/0) and Inf (number/0)) to the maximum observed for PairRatioConsistency
+#   #data$PairRatioConsistency[!is.finite(data$PairRatioConsistency)] <- max(data$PairRatioConsistency[is.finite(data$PairRatioConsistency)],na.rm = TRUE)
+#
+#
+#   # calculate the peak width consistency between the light and heavy for each sample and peptide and tranistion
+#   # PairFWHMConsistency: abs(endogenous - standard)/standard
+#   # tmp = data %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, TransitionFWHM, IsotopeLabelType) %>%
+#   #   tidyr::spread(key = IsotopeLabelType,value = TransitionFWHM)
+#   #
+#   # colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
+#   # colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
+#   #
+#   # data = tmp %>%
+#   #   mutate(PairFWHMConsistency = abs(endogenous - standard)/standard) %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, PairFWHMConsistency) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
+#   #                          "ProductCharge", "FileName", "File"))
+#
+#   # impute the values that are not finite (NA,NaN (0/0) and Inf (number/0)) to the maximum observed for PairFWHMConsistency
+#   #data$PairFWHMConsistency[!is.finite(data$PairFWHMConsistency)] <- max(data$PairFWHMConsistency[is.finite(data$PairFWHMConsistency)],na.rm = TRUE)
+#
+#   # calculate the area ratio consistency of each transition with average of area ratios in all samples
+#   # MeanArea2SumRatio: mean of Area2SumRatio across all samples is calculated for each transition and isotope label.
+#   # MeanIsotopeRatioConsistency: abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio)
+#   # data = suppressMessages(data %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, Area2SumRatio, IsotopeLabelType, aboveThreshold) %>%
+#   #   filter(aboveThreshold) %>%
+#   #   group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon,
+#   #            ProductCharge, IsotopeLabelType) %>%
+#   #   summarise(MeanArea2SumRatio = mean(Area2SumRatio)) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
+#   #                          "ProductCharge", "IsotopeLabelType", "File")))
+#   #
+#   # data = data %>%
+#   #   mutate(MeanIsotopeRatioConsistency = abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio)
+#
+#   # impute the NA MeanIsotopeRatioConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is too low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
+#   # data$MeanIsotopeRatioConsistency[!is.finite(data$MeanIsotopeRatioConsistency)] <- max(data$MeanIsotopeRatioConsistency[is.finite(data$MeanIsotopeRatioConsistency)],na.rm = TRUE)
+#
+#
+#   # calculate the peak width consistency of each transition with average of peak widths in all samples
+#   # MeanTransitionFWHM: mean of TransitionFWHM across all samples is calculated for each transition and isotope label.
+#   # MeanIsotopeFWHMConsistency: abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM)
+#   # data = suppressMessages(data %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, TransitionFWHM, IsotopeLabelType, aboveThreshold) %>%
+#   #   filter(aboveThreshold) %>%
+#   #   group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon,
+#   #            ProductCharge, IsotopeLabelType) %>%
+#   #   summarise(MeanTransitionFWHM = mean(TransitionFWHM)) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
+#   #                          "ProductCharge", "IsotopeLabelType", "File")))
+#   #
+#   # data = data %>%
+#   #   mutate(MeanIsotopeFWHMConsistency = abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM)
+#   #
+#   # # impute the NA MeanIsotopeFWHMConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is to low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
+#   # data$MeanIsotopeFWHMConsistency[!is.finite(data$MeanIsotopeFWHMConsistency)] <- max(data$MeanIsotopeFWHMConsistency[is.finite(data$MeanIsotopeFWHMConsistency)],na.rm = TRUE)
+#
+#
+#   # calculate the peak center (RT) consistency of each transition with average of RT in all samples
+#   # MeanPeakCenter: mean of PeakCenter across all samples is calculated for each transition and isotope label.
+#   # MeanIsotopeRTConsistency: abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter
+#
+#   # data = suppressMessages(data %>%
+#   #   select(PeptideModifiedSequence, PrecursorCharge, File, FileName, FragmentIon,
+#   #          ProductCharge, PeakCenter, IsotopeLabelType, aboveThreshold) %>%
+#   #   filter(aboveThreshold) %>%
+#   #   group_by(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon, ProductCharge,
+#   #            IsotopeLabelType) %>%
+#   #   summarise(MeanPeakCenter = mean(PeakCenter)) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "FragmentIon", "PrecursorCharge",
+#   #                          "ProductCharge", "IsotopeLabelType", "File")))
+#   #
+#   # data = data %>%
+#   #   mutate(MeanIsotopeRTConsistency = abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter)
+#   #
+#   # # impute the NA MeanIsotopeRTConsistency values to max of this column. This happens when for a certain fragment ion of a peptide, nothing is detected above a certain threshold (either determined by intensity at lloq or chosen arbitrarily by the user). In these cases we just assume that the peak is to low to be used for determining the quality of the peak. Also impute values that are not finite (NA,NaN (0/0) and Inf (number/0))
+#   # data$MeanIsotopeRTConsistency[!is.finite(data$MeanIsotopeRTConsistency)] <- max(data$MeanIsotopeRTConsistency[is.finite(data$MeanIsotopeRTConsistency)],na.rm = TRUE)
+#
+#   # calculate the correlation between the light and heavy Area2SumRatios
+#   # the sum transitions are first filtered out, and the correlation coefficiant between the Area2SumRatio of light and heavy isotopes are calculated for each peptide and sample
+#   # also calculate the absolute value of log of Area2SumRatio between endogenous and standard. This helps identify transitions that have interference or different area ratios between the isotope pairs
+#   # tmp = data %>%
+#   #   filter(FragmentIon != "sum") %>%
+#   #   select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#   #          ProductCharge, IsotopeLabelType, Area2SumRatio) %>%
+#   #   tidyr::spread(key = IsotopeLabelType,value = Area2SumRatio)
+#   #
+#   # colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
+#   # colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
+#   #
+#   # data = suppressMessages(tmp %>%
+#   #   group_by(PeptideModifiedSequence, PrecursorCharge, FileName,File) %>%
+#   #   summarise(PeakGroupRatioCorr = cor(endogenous, standard,method = "pearson")) %>%
+#   #   right_join(data,by = c("PeptideModifiedSequence", "PrecursorCharge",
+#   #                          "FileName", "File")))
+#   #
+#   # # impute NA PeakGroupRatioCorr values to 0. The NA values are a result of all zero signals or peptides with only one transition
+#   # data$PeakGroupRatioCorr[is.na(data$PeakGroupRatioCorr)] <- 0
+#
+#   # calculate the endogenous to standard ratio for each transition
+#   tmp = data %>%
+#     select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#            ProductCharge, IsotopeLabelType, PeakArea) %>%
+#     tidyr::spread(key = IsotopeLabelType,value = PeakArea)
+#
+#   colnames(tmp)[grepl(endogenous.label,colnames(tmp))] = "endogenous"
+#   colnames(tmp)[grepl(standard.label,colnames(tmp))] = "standard"
+#
+#   data = tmp %>%
+#     mutate(Endogenous2StandardRatio = endogenous/standard) %>%
+#     select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#            ProductCharge, Endogenous2StandardRatio) %>%
+#     right_join(data,by = c("File", "FileName", "PeptideModifiedSequence",
+#                            "PrecursorCharge", "FragmentIon", "ProductCharge"))
+#
+#   # for each transition, calculate the CV% of the area to sum ration across all samples
+#   data = suppressMessages(data %>%
+#     select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#            ProductCharge, IsotopeLabelType, Area2SumRatio) %>%
+#       group_by(File, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#                ProductCharge, IsotopeLabelType) %>%
+#     mutate(Area2SumRatioCV = sd(Area2SumRatio, na.rm = TRUE)/mean(Area2SumRatio, na.rm = TRUE)) %>%
+#     select(-Area2SumRatio) %>%
+#     right_join(data,by = c("File", "FileName", "PeptideModifiedSequence",
+#                            "PrecursorCharge", "FragmentIon", "ProductCharge", "IsotopeLabelType")))
+#
+#
+#   # deactivate the cluster
+#   if (parallel) stopCluster(cl)
+#
+#   # extract the feature columns
+#   features = data %>%
+#     select(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+#            ProductCharge, IsotopeLabelType, Area2SumRatioCV, PeakGroupRatioCorr,
+#            PairFWHMConsistency, PairRatioConsistency, PeakGroupJaggedness.m,
+#            PeakGroupSymmetry.m, PeakGroupSimilarity.m, PeakGroupShift,
+#            PeakGroupFWHM.m, PeakGroupFWHM2base.m, PeakGroupModality.m,
+#            TransitionJaggedness, TransitionSymmetry, PairSimilarity, PairShift,
+#            TransitionFWHM2base, TransitionFWHM, TransitionModality, IsotopeJaggedness,
+#            IsotopeSymmetry, IsotopeSimilarity, IsotopeShift, IsotopeFWHM2base,
+#            IsotopeFWHM, IsotopeModality, MeanIsotopeRatioConsistency,
+#            MeanIsotopeFWHMConsistency, MeanIsotopeRTConsistency, TransitionMaxIntensity,
+#            TransitionMaxBoundaryIntensity, TransitionMaxBoundaryIntensityNormalized,
+#            TransitionShift)
+#
+#   # change the IsotopeLabelType to endogenous and standard
+#
+#   features$IsotopeLabelType <- as.character(features$IsotopeLabelType)
+#   features$IsotopeLabelType[features$IsotopeLabelType == endogenous.label] = "endogenous"
+#   features$IsotopeLabelType[features$IsotopeLabelType == standard.label] = "standard"
+#   features$IsotopeLabelType <- factor(features$IsotopeLabelType,levels = c("endogenous","standard"))
+#
+#   # convert the feature.data to wide format
+#   features.to.cast <- colnames(features)[!(colnames(features) %in% c("File","FileName","PeptideModifiedSequence","PrecursorCharge","FragmentIon","ProductCharge","IsotopeLabelType"))]
+#
+#   features <- data.table::dcast(
+#     data.table::setDT(features), File + FileName + PeptideModifiedSequence +
+#       PrecursorCharge + FragmentIon + ProductCharge ~ IsotopeLabelType,
+#     value.var = features.to.cast)
+#
+#   # removing duplicated columns (this happens for the features where the values of standard and endogenous are identical e.g. the peakgroup features)
+#   features <- features[ ,which(!duplicated(t(features))),with = FALSE]
+#
+#   message("Feature Extraction Complete!")
+#   # if export.features is true save the features in the csv file specified by feature.path
+#   if (export.features == TRUE) {
+#     message("Exporting features to disk")
+#     # template file name
+#     feature.file <- file.path(feature.path,"features.csv")
+#
+#     # if the template path does not exist, create it
+#     if (!dir.exists(feature.path)) {
+#       dir.create(feature.path, showWarnings = TRUE, recursive = FALSE, mode = "0777")
+#     }
+#
+#     write.table(features, file = feature.file, sep = ",",row.names = FALSE)
+#   }
+#   # return output
+#   return(list(features = features))
+#
+# }
 
 #' Extract the peak from a chromatogram by restricting the chromatogram to peak boundaries.
 #'
