@@ -135,7 +135,6 @@ check_peak_group <- function(t, s, a){
   length(t) * dim(s)[1] * dim(s)[2] * length(a) == 0
 }
 
-
 buildPeakGroup <- function(dt){
   message(Sys.time(),' : Building peak group for : ',
           paste(dt$File,dt$FileName,dt$PeptideModifiedSequence,dt$PrecursorCharge,
@@ -449,4 +448,53 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
   }
   message(Sys.time()," Done")
   invisible(features)
+}
+
+plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
+                            font.size = 14){
+
+  if(runs=='all'){
+    runs <- unique(data$FileName)
+  }
+  id.vars <-  c('File', 'FileName', 'PeptideModifiedSequence',
+                'FragmentIon', 'PrecursorCharge',
+                'ProductCharge')
+  if(!is.null(features)){
+    data <- data[, c(id.vars,features), with = F]
+  }
+
+  vplots <- lapply(runs, function(x){
+
+    tmp <- melt(data = data[FileName == x], id.vars = id.vars)
+
+    p <- ggplot(data = tmp, aes(x = variable, y = value))+
+      geom_violin(fill = "#F2F2F2",scale = "width") +
+      coord_flip() +
+      labs(x = 'Features', y = 'Score', title = x)+
+      theme_bw()+
+      theme(text = element_text(size = font.size))
+
+    if(!is.null(labels)){
+      p <- p+
+        geom_jitter(aes_string( color = labels),
+                    position = position_jitter(0.25), size = 0.5)
+    }
+    p
+  })
+
+  tmp <- melt(data = data, id.vars = id.vars)
+  p <- ggplot(data = tmp, aes(x = variable, y = value))+
+    geom_violin(fill = "#F2F2F2",scale = "width") +
+    coord_flip() +
+    labs(x = 'Features', y = 'Score', title = 'All Runs')+
+    theme_bw()+
+    theme(text = element_text(size = font.size))
+
+  if(!is.null(labels)){
+    p <- p+
+      geom_jitter(aes_string( color = labels),
+                  position = position_jitter(0.25), size = 0.5)
+  }
+  vplots <- append(vplots,list(p))
+  vplots
 }
