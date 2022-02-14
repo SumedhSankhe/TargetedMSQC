@@ -243,8 +243,8 @@ peakArea <- function(x, req=NA){
   }
 }
 
-plot_chrom <- function(peak, font.size = 14, transition.list = NA, label.list = NA,
-                       split.label = TRUE){
+plot_chrom <- function(peak, font.size = 14, transition.list = NA,
+                       label.list = NA, split.label = TRUE){
 
   pdt <- data.table( peak$sig, 'time' = peak$time)
   pdt <- melt(pdt, id.vars = 'time')
@@ -275,8 +275,9 @@ plot_chrom <- function(peak, font.size = 14, transition.list = NA, label.list = 
 }
 
 ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
-                            endogenous.label = "light", standard.label = "heavy",
-                            export.features = FALSE, feature.path = "", ...) {
+                            endogenous.label = "light",
+                            standard.label = "heavy", export.features = FALSE,
+                            feature.path = "", ...) {
 
   if(!is.na(blanks)){
     stop('What is blank?')
@@ -450,6 +451,32 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
   invisible(features)
 }
 
+violin_plot <- function(x, data, labels, id.vars){
+  measure.vars <- names(data)[!names(data) %in% id.vars]
+  if(x!='all'){
+    tmp <- suppressWarnings(melt(data = data[FileName == x],
+                                 id.vars = id.vars,
+                                 measure.vars = measure.vars))
+  }else{
+    tmp <- melt(data=data, id.vars = id.vars, measure.vars = measure.vars)
+  }
+
+
+  p <- ggplot(data = tmp, aes(x = variable, y = value))+
+    geom_violin(fill = "#F2F2F2",scale = "width") +
+    coord_flip() +
+    labs(x = 'Features', y = 'Score', title = x)+
+    theme_bw()+
+    theme(text = element_text(size = font.size))
+
+  if(!is.null(labels)){
+    p <- p+
+      geom_jitter(aes_string( color = labels),
+                  position = position_jitter(0.25), size = 0.5)
+  }
+  p
+}
+
 plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
                             font.size = 14){
 
@@ -463,38 +490,8 @@ plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
     data <- data[, c(id.vars,features), with = F]
   }
 
-  vplots <- lapply(runs, function(x){
+  vplots <- lapply(c(runs,'all'), violin_plot, data = data, labels = labels,
+                   id.vars = id.vars)
 
-    tmp <- melt(data = data[FileName == x], id.vars = id.vars)
-
-    p <- ggplot(data = tmp, aes(x = variable, y = value))+
-      geom_violin(fill = "#F2F2F2",scale = "width") +
-      coord_flip() +
-      labs(x = 'Features', y = 'Score', title = x)+
-      theme_bw()+
-      theme(text = element_text(size = font.size))
-
-    if(!is.null(labels)){
-      p <- p+
-        geom_jitter(aes_string( color = labels),
-                    position = position_jitter(0.25), size = 0.5)
-    }
-    p
-  })
-
-  tmp <- melt(data = data, id.vars = id.vars)
-  p <- ggplot(data = tmp, aes(x = variable, y = value))+
-    geom_violin(fill = "#F2F2F2",scale = "width") +
-    coord_flip() +
-    labs(x = 'Features', y = 'Score', title = 'All Runs')+
-    theme_bw()+
-    theme(text = element_text(size = font.size))
-
-  if(!is.null(labels)){
-    p <- p+
-      geom_jitter(aes_string( color = labels),
-                  position = position_jitter(0.25), size = 0.5)
-  }
-  vplots <- append(vplots,list(p))
   vplots
 }
