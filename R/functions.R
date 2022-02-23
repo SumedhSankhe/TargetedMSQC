@@ -54,12 +54,16 @@ checkFileNames <- function(fnames){
 
 readData <- function(files, sep){
   message("Reading Data")
-  data.table::rbindlist(lapply(files, function(f){
-    d <- data.table::fread(file = f, sep = sep)
-    d$File <- basename(f)
-    names(d) <- gsub(" ","", names(d))
-    d
-  }))
+  tryCatch({
+    data.table::rbindlist(lapply(files, function(f){
+      d <- data.table::fread(file = f, sep = sep)
+      d$File <- basename(f)
+      names(d) <- gsub(" ","", names(d))
+      d
+    }))
+  }, error = function(e){
+    errorReporting(e = e)
+  })
 }
 
 loadData <- function(chrom.Path, peak.Path){
@@ -139,70 +143,72 @@ buildPeakGroup <- function(dt){
   message(Sys.time(),' : Building peak group for : ',
           paste(dt$File,dt$FileName,dt$PeptideModifiedSequence,dt$PrecursorCharge,
                 collapse = "_"))
+  tryCatch({
+    time <-  lapply(strsplit(dt$Times, ','), as.numeric)
+    time <- colMeans(do.call('rbind', time))
 
-  time <-  lapply(strsplit(dt$Times, ','), as.numeric)
-  time <- colMeans(do.call('rbind', time))
+    itn <- lapply(strsplit(dt$Intensities,','), as.numeric)
 
-  itn <- lapply(strsplit(dt$Intensities,','), as.numeric)
-
-  peak.sig <-lapply(seq_along(itn), function(x){
-    pad_zero(itn[[x]], time)
-  })
-
-  area <- lapply(seq_along(itn), function(x) {
-    pracma::trapz(time, peak.sig[[x]])
-  })
-
-
-  all.isotopes <- unique(as.character(dt$IsotopeLabelType))
-  columns <- paste(dt$FragmentIon, dt$ProductCharge, dt$IsotopeLabelType,
-                   sep = '.')
-
-  single.peaks <- columns[which(
-    mapply(function(x,columns){
-      sum(grepl(substr(x,1,regexpr("\\.[^\\.]*$", x)),columns))
-    }, columns, list(columns)) != 2
-  )]
-
-  if(length(single.peaks) > 0){
-    message('Missing peaks identified')
-    missing.isotopes <- mapply(function(x,all.isotopes){
-      all.isotopes[which(all.isotopes != substr(x,regexpr("\\.[^\\.]*$", x) + 1,nchar(x)))]
-    } ,single.peaks,list(all.isotopes))
-
-    # names of the missing peaks
-    missing.peaks <- sapply(single.peaks,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)))
-    # colnames of the missing peaks that are to be imputated by zero
-    imputed.peaks <- paste(missing.peaks,missing.isotopes,sep = "")
-
-    message('Setting missing peak with 0 peak.sig and 0 area')
-    pos <- length(dt$peak.sig)
-    lapply(seq_along(imputed.peaks), function(x){
-      area[[x+pos]] <- 0
-      peak.sig[[x+pos]] <- rep(0, length(dt$peak.sig[[1]]))
+    peak.sig <-lapply(seq_along(itn), function(x){
+      pad_zero(itn[[x]], time)
     })
-    columns <- c(columns, imputed.peaks)
-  }
 
-  peak.sig <- do.call('cbind', peak.sig)
-  colnames(peak.sig) <- columns
+    area <- lapply(seq_along(itn), function(x) {
+      pracma::trapz(time, peak.sig[[x]])
+    })
 
-  names(area) <- columns
-  area <- do.call('c', area)
 
-  obj <- list(
-    list(
-      list(time = time,#numeric
-           sig =  as.data.frame(peak.sig),#data.frame
-           area = area#numeric
-      )))
+    all.isotopes <- unique(as.character(dt$IsotopeLabelType))
+    columns <- paste(dt$FragmentIon, dt$ProductCharge, dt$IsotopeLabelType,
+                     sep = '.')
 
-  if(check_peak_group(t = time, s = peak.sig, a = area)){
-    NA
-  } else{
-    obj
-  }
+    single.peaks <- columns[which(
+      mapply(function(x,columns){
+        sum(grepl(substr(x,1,regexpr("\\.[^\\.]*$", x)),columns))
+      }, columns, list(columns)) != 2
+    )]
 
+    if(length(single.peaks) > 0){
+      message('Missing peaks identified')
+      missing.isotopes <- mapply(function(x,all.isotopes){
+        all.isotopes[which(all.isotopes != substr(x,regexpr("\\.[^\\.]*$", x) + 1,nchar(x)))]
+      } ,single.peaks,list(all.isotopes))
+
+      # names of the missing peaks
+      missing.peaks <- sapply(single.peaks,function(x) substr(x,1,regexpr("\\.[^\\.]*$", x)))
+      # colnames of the missing peaks that are to be imputated by zero
+      imputed.peaks <- paste(missing.peaks,missing.isotopes,sep = "")
+
+      message('Setting missing peak with 0 peak.sig and 0 area')
+      pos <- length(dt$peak.sig)
+      lapply(seq_along(imputed.peaks), function(x){
+        area[[x+pos]] <- 0
+        peak.sig[[x+pos]] <- rep(0, length(dt$peak.sig[[1]]))
+      })
+      columns <- c(columns, imputed.peaks)
+    }
+
+    peak.sig <- do.call('cbind', peak.sig)
+    colnames(peak.sig) <- columns
+
+    names(area) <- columns
+    area <- do.call('c', area)
+
+    obj <- list(
+      list(
+        list(time = time,#numeric
+             sig =  as.data.frame(peak.sig),#data.frame
+             area = area#numeric
+        )))
+
+    if(check_peak_group(t = time, s = peak.sig, a = area)){
+      NA
+    } else{
+      obj
+    }
+  }, error = function(e){
+    errorReporting(e = e)
+  })
 }
 
 applyPeakBoundary <- function(chromGroup, minStartTime, maxEndTime){
@@ -274,193 +280,15 @@ plot_chrom <- function(peak, font.size = 14, transition.list = NA,
   p
 }
 
-ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
-                            endogenous.label = "light",
-                            standard.label = "heavy", export.features = FALSE,
-                            feature.path = "", ...) {
-
-  if(!is.na(blanks)){
-    stop('What is blank?')
-  } else {
-    data[, aboveThreshold := PeakArea > intensity.threshold]
-  }
-
-  labs <- list('endogenous' = endogenous.label, 'standard' = standard.label)
-
-  data[, id := .I]
-  packageStartupMessage(Sys.time()," Extracting Jaggedness Features...", appendLF = F)
-  jag.cols <- c('PeakGroupJaggedness.m','TransitionJaggedness','IsotopeJaggedness')
-  data[, (jag.cols) := CalculatePeakJaggedness(PeakGroup[[1]],
-                                                 FragmentIon=FragmentIon,
-                                                 ProductCharge=ProductCharge,
-                                                 IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Extracting Symmetry Features...", appendLF = F)
-  sym.cols <- c('PeakGroupSymmetry.m', 'TransitionSymmetry', 'IsotopeSymmetry')
-  data[, (sym.cols) := CalculatePeakSymmetry(PeakGroup[[1]],
-                                              FragmentIon=FragmentIon,
-                                              ProductCharge=ProductCharge,
-                                              IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
-  packageStartupMessage('Done')
-
-
-  packageStartupMessage(Sys.time()," Extracting Similarity Features...", appendLF = F)
-  sim.cols <- c('PeakGroupSimilarity.m','PairSimilarity','IsotopeSimilarity')
-  data[,(sim.cols) := CalculatePeakShapeSimilarity(PeakGroup[[1]],
-                                           FragmentIon=FragmentIon,
-                                           ProductCharge=ProductCharge,
-                                           IsotopeLabelType=IsotopeLabelType), by = id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Extracting Elution Shift Features...", appendLF = F)
-  els.cols <- c('PeakGroupShift','PairShift','IsotopeShift','TransitionShift')
-  data[,(els.cols) := CalculatePeakElutionShift(PeakGroup[[1]],FragmentIon=FragmentIon,
-                                               ProductCharge=ProductCharge,
-                                               IsotopeLabelType=IsotopeLabelType), by = id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Extracting FWHM Feature...", appendLF = F)
-  fwhm.cols <- c('PeakGroupFWHM.m','PeakGroupFWHM2base.m',
-               'TransitionFWHM2base','TransitionFWHM','IsotopeFWHM2base',
-               'IsotopeFWHM')
-  data[, (fwhm.cols) := CalculateFWHM(peak = PeakGroup[[1]],
-                                    FragmentIon=FragmentIon,
-                                    ProductCharge=ProductCharge,
-                                    IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Extracting Modality Features...", appendLF = F)
-  mod.cols <- c('PeakGroupModality.m','TransitionModality','IsotopeModality')
-  data[, (mod.cols) := CalculateModality(PeakGroup[[1]],
-                                        FragmentIon=FragmentIon,
-                                        ProductCharge=ProductCharge,
-                                        IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Calculating Peak Max Intensity for each transition...",
-                        appendLF = F)
-  data[, TransitionMaxIntensity := CalculatePeakMaxIntensity(PeakGroup[[1]],
-                                                             FragmentIon=FragmentIon,
-                                                             ProductCharge=ProductCharge,
-                                                             IsotopeLabelType=as.character(IsotopeLabelType)),
-       by =id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Calculating Max Boundary Intensity for each transition...",
-                        appendLF = F)
-  data[,TransitionMaxBoundaryIntensity := CalculateMaxBoundaryIntensity(PeakGroup[[1]],
-                                                                    FragmentIon=FragmentIon,
-                                                                    ProductCharge=ProductCharge,
-                                                                    IsotopeLabelType=as.character(IsotopeLabelType)),
-       by =id]
-  packageStartupMessage('Done')
-
-  packageStartupMessage(Sys.time()," Extracting other derived features...",
-                        appendLF = F)
-  data[, TransitionMaxBoundaryIntensityNormalized := TransitionMaxBoundaryIntensity/data$TransitionMaxIntensity]
-  data[!is.finite(TransitionMaxBoundaryIntensityNormalized), TransitionMaxBoundaryIntensityNormalized := 0]
-
-  merge.cols <- c('File', 'FileName', 'PeptideModifiedSequence', 'PrecursorCharge',
-                'ProductCharge', 'FragmentIon')
-
-  data[, ':='(PeakCenter = (MaxEndTime+MinStartTime)/2,
-              Area2SumRatio = PeakArea/SumArea, id = NULL, PeakGroup = NULL,
-              ChromGroup = NULL, Times = NULL, Intensities = NULL,
-              MinStartTime = NULL, MaxEndTime = NULL)]
-  data[!is.finite(Area2SumRatio), Area2SumRatio := 0]
-
-  data[aboveThreshold == T,':='(MeanArea2SumRatio = mean(Area2SumRatio),
-                                MeanTransitionFWHM = mean(TransitionFWHM),
-                                MeanPeakCenter = mean(PeakCenter)),
-       .(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon, ProductCharge, IsotopeLabelType)]
-  data[,':='(
-    MeanIsotopeRatioConsistency = abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio,
-    MeanIsotopeFWHMConsistency = abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM,
-    MeanIsotopeRTConsistency = abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter
-  )]
-
-  data$MeanIsotopeRatioConsistency[!is.finite(data$MeanIsotopeRatioConsistency)] <- max(data$MeanIsotopeRatioConsistency[is.finite(data$MeanIsotopeRatioConsistency)],na.rm = TRUE)
-  data$MeanIsotopeFWHMConsistency[!is.finite(data$MeanIsotopeFWHMConsistency)] <- max(data$MeanIsotopeFWHMConsistency[is.finite(data$MeanIsotopeFWHMConsistency)],na.rm = TRUE)
-  data$MeanIsotopeRTConsistency[!is.finite(data$MeanIsotopeRTConsistency)] <- max(data$MeanIsotopeRTConsistency[is.finite(data$MeanIsotopeRTConsistency)],na.rm = TRUE)
-
-  data[,Area2SumRatioCV := sd(Area2SumRatio, na.rm = TRUE)/mean(Area2SumRatio, na.rm = TRUE),
-       .(File, PeptideModifiedSequence, PrecursorCharge, FragmentIon, ProductCharge,
-         IsotopeLabelType)]
-  cast.cols <- names(data)[!names(data) %in% c('File', 'FileName',
-                                                'PeptideModifiedSequence',
-                                                'FragmentIon', 'PrecursorCharge',
-                                                'ProductCharge')]
-  features <- dcast(
-    data = data,
-    File+FileName+PeptideModifiedSequence+FragmentIon+PrecursorCharge+ProductCharge~IsotopeLabelType,
-    value.var = cast.cols[-c(1,2,4)]
-  )
-  change_name <- names(features)
-  change_name <- gsub(endogenous.label,'endogenous',change_name)
-  change_name <- gsub(standard.label,'standard',change_name)
-  names(features) <- change_name
-
-  features <- features[, names(features)[names(features) %in% req.features()], with = F]
-
-
-  tmp <- dcast(data = data[,c(merge.cols, 'IsotopeLabelType', 'Area2SumRatio'), with = F],
-                    formula = ...~IsotopeLabelType, value.var = 'Area2SumRatio')
-  tmp[, PairRatioConsistency_endogenous := abs(get(endogenous.label)-get(standard.label))/get(standard.label)]
-  maxval <- max(tmp$PairRatioConsistency_endogenous[is.finite(tmp$PairRatioConsistency_endogenous)],
-                na.rm = T)
-  tmp[!is.finite(PairRatioConsistency_endogenous), PairRatioConsistency_endogenous := maxval]
-
-  tmp[FragmentIon != 'sum', PeakGroupRatioCorr_endogenous := cor(get(endogenous.label), get(standard.label),
-                                       method = 'pearson'),
-           .(PeptideModifiedSequence, PrecursorCharge, FileName,File)]
-  tmp[is.na(PeakGroupRatioCorr_endogenous), PeakGroupRatioCorr_endogenous := 0]
-  tmp[,(c(endogenous.label, standard.label)) := NULL]
-
-  tmp <- merge(tmp,
-                    dcast(data = data[,c(merge.cols, 'IsotopeLabelType',
-                                         'TransitionFWHM'), with = F],
-                          formula = ...~IsotopeLabelType,value.var = 'TransitionFWHM'),
-                    by = merge.cols)
-
-  tmp[,PairFWHMConsistency_endogenous := abs(get(endogenous.label)-get(standard.label))/get(standard.label)]
-  tmp[,(c(endogenous.label, standard.label)) := NULL]
-  maxval <- max(tmp$PairFWHMConsistency_endogenous[is.finite(tmp$PairFWHMConsistency_endogenous)],
-                na.rm = T)
-  tmp[!is.finite(PairFWHMConsistency_endogenous), PairFWHMConsistency_endogenous := maxval]
-
-  tmp <- merge(tmp,
-               dcast(data = data[,c(merge.cols,'IsotopeLabelType', 'PeakArea'), with = F],
-                     formula = ...~IsotopeLabelType, value.var = 'PeakArea'),
-               by = merge.cols)
-  tmp[, Endogenous2StandardRatio := (get(endogenous.label))/(get(standard.label))]
-  tmp[, c(standard.label, endogenous.label) := NULL]
-  packageStartupMessage('Done')
-
-  features <- merge(features, tmp, merge.cols)
-  features <- features[, req.features(), with = F]
-
-  if(export.features){
-    message(Sys.time()," Exporting features")
-    if(!dir.exists(feature.path)){
-      dir.create(feature.path)
-    }
-    fwrite(feature.path, "features.csv")
-  }
-  message(Sys.time()," Done")
-  invisible(features)
-}
-
-violin_plot <- function(x, data, labels, id.vars){
+violin_plot <- function(x, data, labels, id.vars, font.size){
   measure.vars <- names(data)[!names(data) %in% id.vars]
-  if(x!='all'){
+  if(x!='All'){
     tmp <- suppressWarnings(melt(data = data[FileName == x],
                                  id.vars = id.vars,
                                  measure.vars = measure.vars))
   }else{
     tmp <- melt(data=data, id.vars = id.vars, measure.vars = measure.vars)
   }
-
 
   p <- ggplot(data = tmp, aes(x = variable, y = value))+
     geom_violin(fill = "#F2F2F2",scale = "width") +
@@ -490,8 +318,215 @@ plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
     data <- data[, c(id.vars,features), with = F]
   }
 
-  vplots <- lapply(c(runs,'all'), violin_plot, data = data, labels = labels,
-                   id.vars = id.vars)
+  vplots <- lapply(c(runs,'All'), violin_plot, data = data, labels = labels,
+                   id.vars = id.vars, font.size = font.size)
 
   vplots
 }
+
+
+impute_nonfinite <- function(x, impute=c('max','min','median','0')){
+  impute <- match.arg(impute)
+  fi_x <- x[is.finite(x)]
+  if(impute!='0'){
+    imp_val <- eval(call(impute,fi_x))
+  }else{
+    imp_val <- 0
+  }
+  x[!is.finite(x)] <- imp_val
+  x
+}
+
+
+ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
+                            endogenous.label = "light",
+                            standard.label = "heavy", export.features = FALSE,
+                            feature.path = "", ...) {
+
+  if(!is.na(blanks)){
+    stop('What is blank?')
+  } else {
+    data[, aboveThreshold := PeakArea > intensity.threshold]
+  }
+
+  labs <- list('endogenous' = endogenous.label, 'standard' = standard.label)
+
+  data[, id := .I]
+  packageStartupMessage(Sys.time()," Extracting Jaggedness Features...", appendLF = F)
+  jag.cols <- c('PeakGroupJaggedness.m','TransitionJaggedness','IsotopeJaggedness')
+  data[, (jag.cols) := CalculatePeakJaggedness(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Extracting Symmetry Features...", appendLF = F)
+  sym.cols <- c('PeakGroupSymmetry.m', 'TransitionSymmetry', 'IsotopeSymmetry')
+  data[, (sym.cols) := CalculatePeakSymmetry(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
+  packageStartupMessage('Done')
+
+
+  packageStartupMessage(Sys.time()," Extracting Similarity Features...", appendLF = F)
+  sim.cols <- c('PeakGroupSimilarity.m','PairSimilarity','IsotopeSimilarity')
+  data[,(sim.cols) := CalculatePeakShapeSimilarity(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=IsotopeLabelType), by = id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Extracting Elution Shift Features...", appendLF = F)
+  els.cols <- c('PeakGroupShift','PairShift','IsotopeShift','TransitionShift')
+  data[,(els.cols) := CalculatePeakElutionShift(
+    PeakGroup[[1]],FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=IsotopeLabelType), by = id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Extracting FWHM Feature...", appendLF = F)
+  fwhm.cols <- c('PeakGroupFWHM.m','PeakGroupFWHM2base.m',
+               'TransitionFWHM2base','TransitionFWHM','IsotopeFWHM2base',
+               'IsotopeFWHM')
+  data[, (fwhm.cols) := CalculateFWHM(peak = PeakGroup[[1]],
+                                    FragmentIon=FragmentIon,
+                                    ProductCharge=ProductCharge,
+                                    IsotopeLabelType=as.character(IsotopeLabelType)),
+       by = id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Extracting Modality Features...", appendLF = F)
+  mod.cols <- c('PeakGroupModality.m','TransitionModality','IsotopeModality')
+  data[, (mod.cols) := CalculateModality(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=as.character(IsotopeLabelType)), by = id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Calculating Peak Max Intensity for each transition...",
+                        appendLF = F)
+  data[, TransitionMaxIntensity := CalculatePeakMaxIntensity(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=as.character(IsotopeLabelType)),
+    by =id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Calculating Max Boundary Intensity for each transition...",
+                        appendLF = F)
+  data[,TransitionMaxBoundaryIntensity := CalculateMaxBoundaryIntensity(
+    PeakGroup[[1]],
+    FragmentIon=FragmentIon,
+    ProductCharge=ProductCharge,
+    IsotopeLabelType=as.character(IsotopeLabelType)),
+    by =id]
+  packageStartupMessage('Done')
+
+  packageStartupMessage(Sys.time()," Extracting other derived features...",
+                        appendLF = F)
+  data[, TransitionMaxBoundaryIntensityNormalized := TransitionMaxBoundaryIntensity/data$TransitionMaxIntensity]
+  data[!is.finite(TransitionMaxBoundaryIntensityNormalized), TransitionMaxBoundaryIntensityNormalized := 0]
+
+  merge.cols <- c('File', 'FileName', 'PeptideModifiedSequence', 'PrecursorCharge',
+                'ProductCharge', 'FragmentIon')
+
+  data[, ':='(PeakCenter = (MaxEndTime+MinStartTime)/2,
+              Area2SumRatio = PeakArea/SumArea, id = NULL, PeakGroup = NULL,
+              ChromGroup = NULL, Times = NULL, Intensities = NULL,
+              MinStartTime = NULL, MaxEndTime = NULL)]
+  data[, Area2SumRatio := impute_nonfinite(Area2SumRatio, '0')]
+
+  data <- merge(data,
+                data[aboveThreshold == T,.(MeanArea2SumRatio = mean(Area2SumRatio, na.rm = T),
+                                           MeanTransitionFWHM = mean(TransitionFWHM, na.rm = T),
+                                           MeanPeakCenter = mean(PeakCenter, na.rm = T)),
+                     .(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon, ProductCharge, IsotopeLabelType)],
+                by = c('PeptideModifiedSequence', 'PrecursorCharge', 'File', 'FragmentIon',
+                       'ProductCharge', 'IsotopeLabelType'), all.x = T)
+
+  data[,':='(
+    MeanIsotopeRatioConsistency = abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio,
+    MeanIsotopeFWHMConsistency = abs(TransitionFWHM - MeanTransitionFWHM)/MeanTransitionFWHM,
+    MeanIsotopeRTConsistency = abs(PeakCenter - MeanPeakCenter)/MeanPeakCenter
+  )]
+
+  data[,':='(
+    MeanIsotopeRatioConsistency = impute_nonfinite(MeanIsotopeRatioConsistency, 'max'),
+    MeanIsotopeFWHMConsistency = impute_nonfinite(MeanIsotopeFWHMConsistency,'max'),
+    MeanIsotopeRTConsistency = impute_nonfinite(MeanIsotopeRTConsistency, 'max')
+  )]
+
+  data[,Area2SumRatioCV := sd(Area2SumRatio, na.rm = TRUE)/mean(Area2SumRatio, na.rm = TRUE),
+       .(File, PeptideModifiedSequence, PrecursorCharge, FragmentIon, ProductCharge,
+         IsotopeLabelType)]
+
+  tmp <- dcast(data = data[,c(merge.cols, 'IsotopeLabelType', 'Area2SumRatio'), with = F],
+               formula = ...~IsotopeLabelType, value.var = 'Area2SumRatio')
+  tmp[, PairRatioConsistency_endogenous := abs(get(endogenous.label)-get(standard.label))/get(standard.label)]
+  tmp[, PairRatioConsistency_endogenous := impute_nonfinite(PairRatioConsistency_endogenous, 'max')]
+
+  tmp <- merge(tmp,
+               tmp[FragmentIon != 'sum', .(PeakGroupRatioCorr_endogenous = cor(
+                 get(endogenous.label), get(standard.label),method = 'pearson')),
+                 .(PeptideModifiedSequence, PrecursorCharge, FileName,File)],
+               by = c('PeptideModifiedSequence', 'PrecursorCharge', 'FileName',
+                      'File'), all.x = T)
+
+  tmp[is.na(PeakGroupRatioCorr_endogenous), PeakGroupRatioCorr_endogenous := 0]
+  tmp[,(c(endogenous.label, standard.label)) := NULL]
+
+  tmp <- merge(tmp,
+               dcast(data = data[,c(merge.cols, 'IsotopeLabelType',
+                                    'TransitionFWHM'), with = F],
+                     formula = ...~IsotopeLabelType,value.var = 'TransitionFWHM'),
+               by = merge.cols, all.x = T)
+
+  tmp[,PairFWHMConsistency_endogenous := abs(get(endogenous.label)-get(standard.label))/get(standard.label)]
+  tmp[,(c(endogenous.label, standard.label)) := NULL]
+  tmp[, PairFWHMConsistency_endogenous:= impute_nonfinite(PairFWHMConsistency_endogenous,'max')]
+
+  tmp <- merge(tmp,
+               dcast(data = data[,c(merge.cols,'IsotopeLabelType', 'PeakArea'), with = F],
+                     formula = ...~IsotopeLabelType, value.var = 'PeakArea'),
+               by = merge.cols, all.x = T)
+  tmp[, Endogenous2StandardRatio := (get(endogenous.label))/(get(standard.label))]
+  tmp[, c(standard.label, endogenous.label) := NULL]
+  packageStartupMessage('Done')
+
+  cast.cols <- names(data)[!names(data) %in% c('File', 'FileName',
+                                               'PeptideModifiedSequence',
+                                               'FragmentIon', 'PrecursorCharge',
+                                               'ProductCharge')]
+  features <- dcast(
+    data = data,
+    File+FileName+PeptideModifiedSequence+FragmentIon+PrecursorCharge+ProductCharge~IsotopeLabelType,
+    value.var = cast.cols[-c(1,2,4)]
+  )
+  change_name <- names(features)
+  change_name <- gsub(endogenous.label,'endogenous',change_name)
+  change_name <- gsub(standard.label,'standard',change_name)
+  names(features) <- change_name
+
+  features <- features[, names(features)[names(features) %in% req.features()], with = F]
+
+
+  features <- merge(features, tmp, merge.cols)
+  features <- features[, req.features(), with = F]
+
+  if(export.features){
+    message(Sys.time()," Exporting features")
+    if(!dir.exists(feature.path)){
+      dir.create(feature.path)
+    }
+    fwrite(feature.path, "features.csv")
+  }
+  message(Sys.time()," Feature Extraction Complete")
+  invisible(features)
+}
+
