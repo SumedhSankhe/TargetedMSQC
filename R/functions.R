@@ -136,7 +136,13 @@ pad_zero <- function(x, t){
 }
 
 check_peak_group <- function(t, s, a){
-  length(t) * dim(s)[1] * dim(s)[2] * length(a) == 0
+  tryCatch({
+    length(t) * dim(s)[1] * dim(s)[2] * length(a) == 0
+  }, error = function(e){
+    message('Wololo!!')
+    browser()
+  })
+
 }
 
 buildPeakGroup <- function(dt){
@@ -212,29 +218,30 @@ buildPeakGroup <- function(dt){
 }
 
 applyPeakBoundary <- function(chromGroup, minStartTime, maxEndTime){
-  pg <- lapply(seq_along(chromGroup), function(x){
-    m <- minStartTime[x]
-    M <- maxEndTime[x]
-    idx <-  which(chromGroup[[x]]$time > m & chromGroup[[x]]$time < M)
-    time <-  chromGroup[[x]]$time[idx]
+
+  tryCatch({
+    idx <-  which(chromGroup$time > minStartTime & chromGroup$time < maxEndTime)
 
     if (length(idx) == 3) {
-      if (idx[1] > 1) idx <- c(idx[1] - 1,idx)
-      else idx <- c(idx,tail(idx,1) + 1)
+      if (idx[1] > 1){
+        idx <- c(idx[1] - 1,idx)
+      } else{
+        idx <- c(idx,tail(idx,1) + 1)
+      }
     }
-
-    peak.sig <- chromGroup[[x]]$sig[idx,]
+    time <-  chromGroup$time[idx]
+    peak.sig <- chromGroup$sig[idx,]
     area <- sapply(peak.sig, function(x) pracma::trapz(time,x))
 
     obj <- list(time = time, sig = peak.sig, area = area)
     if(check_peak_group(t = time, s = peak.sig, a = area)){
       NA
     } else{
-      obj
+      list(list(obj))
     }
+  }, error = function(e){
+    errorReporting(e)
   })
-  list(pg)
-
 }
 
 peakArea <- function(x, req=NA){
@@ -512,9 +519,6 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
   change_name <- gsub(endogenous.label,'endogenous',change_name)
   change_name <- gsub(standard.label,'standard',change_name)
   names(features) <- change_name
-
-  features <- features[, names(features)[names(features) %in% req.features()], with = F]
-
 
   features <- merge(features, tmp, merge.cols)
   features <- features[, req.features(), with = F]
