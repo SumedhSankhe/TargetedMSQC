@@ -165,7 +165,7 @@ CleanUpChromatograms <- function(chromatogram.path = NULL,
     # calculate sum of transitions with the FragmentIon name of "sum". Add the
     # new "sum" transition rows to the dataframe
     message("Calculating sum of transitions with the FragmentIon")
-    tmp <- chrom.data[, .(PeakGroup = calculate_transition_sum( c(.SD, .BY)),
+    tmp <- chrom.data[, .(PeakGroup = CalculateTransitionSum(peak = PeakGroup[[1]]),
                           MinStartTime = MinStartTime[1],
                           MaxEndTime = MaxEndTime[1]),
                .(File, FileName, PeptideModifiedSequence, PrecursorCharge)]
@@ -341,8 +341,9 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
                                            MeanTransitionFWHM = mean(TransitionFWHM, na.rm = T),
                                            MeanPeakCenter = mean(PeakCenter, na.rm = T)),
                      .(PeptideModifiedSequence, PrecursorCharge, File, FragmentIon, ProductCharge, IsotopeLabelType)],
-                by = c('PeptideModifiedSequence', 'PrecursorCharge', 'File', 'FragmentIon',
-                       'ProductCharge', 'IsotopeLabelType'), all.x = T)
+                by = c('PeptideModifiedSequence', 'PrecursorCharge', 'File',
+                       'FragmentIon', 'ProductCharge', 'IsotopeLabelType'),
+                all.x = T)
 
   data[,':='(
     MeanIsotopeRatioConsistency = abs(Area2SumRatio - MeanArea2SumRatio)/MeanArea2SumRatio,
