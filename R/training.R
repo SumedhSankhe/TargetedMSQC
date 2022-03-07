@@ -47,67 +47,46 @@
 #'               template.path = template.path,
 #'               endogenous.label = "light",standard.label = "heavy")
 
-MakeTemplate <- function(chromatogram.path,template.path,
+MakeTemplate <- function(chromatogram.path, template.path = NULL,
                          training.filename.list = "all",
                          endogenous.label = "light",
                          standard.label = "heavy" ,
                          iRT.list = iRTList(), ...) {
-
-
   # read all the tsv files in the chromatogram directory
-  chromatogram.files <- sort(list.files(chromatogram.path,pattern = "\\.tsv"))
-  chromatogram.files <- unlist(lapply(chromatogram.files,function(x) substr(x,1,regexpr("\\.",x)[[1]] - 1)))
+  chromatogram.files <- sort(list.files(chromatogram.path,pattern = "\\.tsv", full.names = T))
 
-  tmp <- lapply(chromatogram.files, function(chromatogram.file) {
-
-    chromatogram.file.path <- file.path(chromatogram.path,paste0(chromatogram.file,".tsv"))
-
-    data <- unique(read.table(chromatogram.file.path,sep = "\t", header = TRUE))
-
-    # assign the skyline file name as a column
-    data$File <- chromatogram.file
-
+  lapply(chromatogram.files, function(file){
+    dt <- readData(file, sep = '\t')
     # remove the rows with an isotope label that is not included in the pair
-    data$IsotopeLabelType <-  tolower(data$IsotopeLabelType)
-    data$IsotopeLabelType <- factor(data$IsotopeLabelType,levels = c(endogenous.label,standard.label))
-
-    data <- data %>% filter(!is.na(IsotopeLabelType))
-
+    dt[, IsotopeLabelType := factor(tolower(IsotopeLabelType),
+                                    levels = c(endogenous.label, standard.label))]
     # remove the rows that correspond to iRTs
-
-    data <- data %>% filter(!PeptideModifiedSequence %in% iRT.list)
-
+    dt <- dt[!is.na(IsotopeLabelType) | !PeptideModifiedSequence %in% iRT.list]
+    # assign the skyline file name as a column, empty status and notes columns
+    dt[,':='(File = file, Status = NA_character_, Notes = NA_character_)]
     # QC.data holds File,FileName, Peptide, Transition and Isotopelabel Info
-
-    QC.data <- unique(data %>%
-                         select(File,FileName,PeptideModifiedSequence,PrecursorCharge,FragmentIon,ProductCharge) %>%
-                         arrange(File,PeptideModifiedSequence,PrecursorCharge,FileName,FragmentIon,ProductCharge))
-
-    # add a column for status
-    QC.data$Status = NA
-
-    # add a column for additional notes
-    QC.data$Notes = NA
-
-    # template file name
-    template.file <- file.path(template.path,paste0(chromatogram.file,"_training_template.csv"))
-
-    # if the template path does not exist, create it
-    if (!dir.exists(template.path)) {
-      dir.create(template.path, showWarnings = TRUE, recursive = FALSE, mode = "0777")
-    }
-
+    dt <- dt[,.(File, FileName, PeptideModifiedSequence, PrecursorCharge, FragmentIon,
+                ProductCharge, Status, Notes)]
+    dt <- unique(dt)
     # filter to keep the rows in the training.filename.list
-
-    if (!identical(training.filename.list,"all")) {
-      QC.data <- QC.data %>% filter(FileName %in% training.filename.list)
+    if(!identical(training.filename.list, 'all')){
+      dt <- dt[, (training.filename.list) := NULL]
+    }
+    # if the template path does not exist, create it
+    if(!is.null(template.path)){
+      if(!dir.exists(template.path)){
+        dir.create(template.path)
+      }
+    }else{
+      errorReporting("Please provide a path to save the template, use Arg: 'template.path'")
     }
 
-
-    # writing the template
-    write.table(QC.data, file = template.file, sep = ",",row.names = FALSE)
-  }
-  )
+    template.file <- file.path(template.path,
+                               paste(gsub("\\..*", "", basename(file)),
+                                     'training_template.csv', sep = '_'))
+    fwrite(dt, file = template.file)
+    message(Sys.time(), 'Template file created : \n',template.file)
+  })
 }
 
 
@@ -286,14 +265,14 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
                          description.columns = c("Notes"), method = "RRF",
                          metric = c("Accuracy","ROC"),tuneGrid = NULL,
                          random.seed = NULL, export.model = FALSE,
-                         model.path = "", ...) {
+                         model.path = NA, ...) {
 
   identifier.columns = c("File","FileName","PeptideModifiedSequence","FragmentIon",
-                         "IsotopeLabelType","PrecursorCharge","ProductCharge")
+                         "PrecursorCharge","ProductCharge")
 
   # The identifier/description/response columns are removed.
   rm.cols <- c(identifier.columns, description.columns, response.var)
-  data.merged.feature.only <-  data.merged[, !rm.cols, with = F]
+  feature.only <-  data.merged[, !rm.cols, with = F]
 
   # response vector
   resp_vector <- data.merged[,get(response.var)]
@@ -301,11 +280,11 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
   # a 10-fold repeated cross validation (3 repeats) is used for model optimization.
   # if metric = ROC, the trainControl
   if (metric == "ROC") {
-    train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3,
+    train_control <- caret::trainControl(method = "repeatedcv", number = 10, repeats = 3,
                                   verboseIter = FALSE,sampling = "up",grid,
                                   classProbs = TRUE,summaryFunction = twoClassSummary)
   } else {
-    train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 3,
+    train_control <- caret::trainControl(method = "repeatedcv", number = 10, repeats = 3,
                                   verboseIter = FALSE,sampling = "up",grid)
   }
 
@@ -313,29 +292,40 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
   # model parameters and train the model. Testing set is used as unseen data to
   # estimate model performance and evaluate overfitting
   if (!is.null(random.seed)) set.seed(random.seed[1])
-  trainIndex <- createDataPartition(resp_vector,p = .8, list = F, times = 1)
+  trainIndex <- caret::createDataPartition(resp_vector,p = .8, list = F, times = 1)
 
 #  datasetTrain <- data.merged.feature.only.transformed[trainIndex,]
-  datasetTrain <- data.merged.feature.only[trainIndex,]
+  datasetTrain <- feature.only[trainIndex,]
 
   # if a seed is provided for controlling the randomness of the algorithm, apply here
   if (!is.null(random.seed)) set.seed(random.seed[2])
 
+  #parallel system check
+  if(parallel & !is.na(workers)){
+    message(Sys.time(),' : Setting up ',workers,' for parallel model training')
+    cl <- parallel::makePSOCKcluster(workers)
+    doParallel::registerDoParallel(cl)
+  }
+
   # Train the model using the training dataset
   if (!is.null(tuneGrid)) {
-    model <- train(datasetTrain, resp_vector[trainIndex], method = method,
-                   preProcess = c("center","scale"), trControl = train_control,
-                   importance = TRUE, metric = metric, tuneGrid = tuneGrid)
+    model <- caret::train(feature.only[trainIndex,], resp_vector[trainIndex],
+                   method = method, preProcess = c("center","scale"),
+                   trControl = train_control, importance = TRUE, metric = metric,
+                   tuneGrid = tuneGrid[1:2,])
 
   } else {
-      model <- train(as.matrix(datasetTrain), resp_vector[trainIndex],
+      model <- caret::train(feature.only[trainIndex,], resp_vector[trainIndex],
                      method = method, preProcess = c("center","scale"),
                      trControl = train_control, importance = TRUE, metric = metric)
 
   }
+  if(parallel){
+    parallel::stopCluster(cl)
+  }
 
   # predicting the response on inputs
-  response.prediction <- predict(model, newdata = data.merged.feature.only)
+  response.prediction <- predict(model, newdata = feature.only)
 
   # model performance based on confusion matrix for unseen data (testing set)
   performance.testing <- confusionMatrix(
@@ -344,23 +334,21 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
     )
 
   QC.model = list(model = model, performance.testing = performance.testing,
-                  model.file.path = NA)
+                  model.file.path = model.path)
 
   # if export.features is true save the features in the csv file specified by feature.path
   if (export.model == TRUE) {
     # template file name
     tmp_file <- paste0("model_",method,format(Sys.time(), "_%Y%m%d_%H%M"),".rda")
     model.file <- file.path(model.path, tmp_file)
-
     # if the template path does not exist, create it
     if (!dir.exists(model.path)) {
-      dir.create(model.path, showWarnings = TRUE, recursive = FALSE, mode = "0777")
+      dir.create(model.path)
     }
     QC.model$model.file.path <- model.file
     save(QC.model, file = model.file)
   }
-  return(QC.model)
-
+  QC.model
 }
 
 #' Apply a binary predictive peak QC model to flag peaks that suffer from poor
@@ -418,75 +406,40 @@ ApplyQCModel <- function(data.feature, model, response.var = c("Status"),
                          description.columns = c("Notes"), flag.prob.threshold = 0.5,
                          standard.intensity.threshold = NULL, type = NULL, ...) {
 
-  # purpose: Apply a binary classification model to flag peaks that require manual inspection
-  #
-  # args:
-  #   data.feature: A dataframe that contains the peak identifiers (File,FileName,PeptideModifiedSequence,FragmentIon,IsotopeLabelType,PrecursorCharge and ProductCharge) as well as the QC metrics calcualted for each. data.feature is the output of ExtractFeatures$features
-  #   model: the peak binary classifier. The model is the output of TrainQCModel. We recommend to use the default model provided with the package.
-  #   response.var: If the data.feature includes any response variables, it should be indicated here. Response and description columns as well identifier columns will be removed from the data before applying the model
-  #   description.columns: If the data.feature includes any description columns, it should be indicated here. Response and description columns as well identifier columns will be removed from the data before applying the model
-  #   standard.intensity.threshold: If not NULL, it should be a numerical value that is used to flag any transition whose signal intensity is below this threshold. For such transitions, this will override the model output.
-  #
-  # returns:
-  #   data.feature.pred: the predicted response is appended to the input data.feature by a column
-
-
-  # error and warning handling ---------------------------------------
-
-  #   input errors: if the input standard.intensity.threshold is not numeric
-  error.input.format = simpleError("ApplyQCModel: standard.intensity.threshold must be numeric")
-
-  # error handling
-  if (!is.null(standard.intensity.threshold) & !is.numeric(standard.intensity.threshold)) stop(error.input.format)
-
-  # function body  ---------------------------------------
+  if (!is.null(standard.intensity.threshold) & !is.numeric(standard.intensity.threshold)){
+    errorReporting("standard.intensity.threshold must be numeric")
+  }
 
   # default identifier.columns, which will be removed from data.merged
   identifier.columns = c("File","FileName","PeptideModifiedSequence","FragmentIon",
                          "IsotopeLabelType","PrecursorCharge","ProductCharge")
 
-  # change data table to data frame. Otherwise you need to add with = FALSE to slice subsets.
-  data.feature <- data.frame(data.feature)
-
-
-  # The identifier columns are removed.
-  data.merged.feature.only = data.feature[,colnames(data.feature)
-                                         [!(colnames(data.feature) %in% identifier.columns)]]
-
-  # The description columns are removed
-  data.merged.feature.only = data.merged.feature.only[,colnames(data.merged.feature.only)
-                                                      [!(colnames(data.merged.feature.only) %in% description.columns)]]
-
-  # The response variable columns are removed to leave only the features
-  data.merged.feature.only = data.merged.feature.only[,colnames(data.merged.feature.only)
-                                                      [!(colnames(data.merged.feature.only) %in% response.var)]]
-
+  rm.cols <- c(identifier.columns, description.columns, response.var)
+  feature.only <-  data.feature[, !rm.cols, with = F]
   # predicting the response on inputs
-  response.prediction.prob <- predict(model$model, newdata = data.merged.feature.only,type = "prob")
+  response.prob <- as.data.table(predict(model$model, newdata = feature.only,
+                                                    type = "prob"))
 
-  # apply the class probability threshold for flag provided by the user
-  response.prediction <- data.frame(Status.prediction = rep("flag",nrow(data.merged.feature.only)))
-  levels(response.prediction$Status.prediction) <- c("flag","ok")
-  response.prediction$Status.prediction[response.prediction.prob[,1] <= flag.prob.threshold] <- "ok"
+  response.prob[, Status.prediction := ifelse(flag <= flag.prob.threshold,
+                                                         'ok', 'flag')]
+  response.prob[, Status.prediction := factor(Status.prediction,
+                                              levels = c('flag', 'ok'))]
 
   # merge QC predictions with original data
-  data.feature.pred <- cbind(data.feature,response.prediction)
+  data.feature.pred <- cbind(data.feature,response.prob)
 
-  if (!is.null(type) && type == "prob") {
+  # if (!is.null(type) && type == "prob") {
+  #   response.prediction.prob <- data.frame(flag.prob.prediction = response.prediction.prob[,1],
+  #                                          ok.prob.prediction = response.prediction.prob[,2])
+  #   # merge QC predictions with original data
+  #   data.feature.pred <- cbind(data.feature.pred,response.prediction.prob)
+  # }
 
-    response.prediction.prob <- data.frame(flag.prob.prediction = response.prediction.prob[,1],
-                                           ok.prob.prediction = response.prediction.prob[,2])
-    # merge QC predictions with original data
-    data.feature.pred <- cbind(data.feature.pred,response.prediction.prob)
-
-  }
-
-
-  # if a threshold for standard signal intensity is provided, flag any transition whose max intensity is below the threshold:
+  # if a threshold for standard signal intensity is provided, flag any transition
+  # whose max intensity is below the threshold:
   if (!is.null(standard.intensity.threshold)) {
-    data.feature.pred[data.feature.pred$TransitionMaxIntensity_standard < standard.intensity.threshold,"Status.prediction"] <- "flag"
+    data.feature.pred[TransitionMaxIntensity_standard < standard.intensity.threshold,
+                      Status.prediction := 'flag']
   }
-
-  return(data.feature.pred)
-
+  data.feature.pred
 }

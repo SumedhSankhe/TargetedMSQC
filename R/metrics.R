@@ -34,7 +34,7 @@
 
 CalculateJaggedness <- function(sig, flatness.factor = 0.05, ...) {
   tryCatch({
-    if(length(sig<3)){
+    if(length(sig)<3){
       errorReporting("input sig should be a numeric vector with at least 3 elements")
     }
     if (flatness.factor < 0 || flatness.factor > 1) {
@@ -241,11 +241,11 @@ CalculatePeakShapeSimilarity <- function(peak,...) {
 
 CalculateElutionShift <- function(sig1,sig2,time,...) {
 
-  if(!is.numeric(sig1) | !is.numeric(sig2) | !is.numeric(time)){
+  if(!is.numeric(unlist(sig1)) | !is.numeric(unlist(sig2)) | !is.numeric(time)){
     errorReporting('sig1, sig2 and time should be numeric vectors of equal length')
   }
 
-  if(length(sig1) != length(time) | length(sig2) != length(sig1)){
+  if(nrow(sig1) != length(time) | nrow(sig2) != nrow(sig1)){
     errorReporting('sig1, sig2 and time should be numeric vectors of equal length')
   }
 

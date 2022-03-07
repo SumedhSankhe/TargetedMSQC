@@ -62,7 +62,8 @@ readData <- function(files, sep){
       d
     }))
   }, error = function(e){
-    errorReporting(e = e)
+    traceback()
+    errorReporting(e = e$message)
   })
 }
 
@@ -294,10 +295,13 @@ plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
   if(runs=='all'){
     runs <- unique(data$FileName)
   }
-  id.vars <-  c('File', 'FileName', 'PeptideModifiedSequence',
-                'FragmentIon', 'PrecursorCharge',
-                'ProductCharge')
+  id.vars <-  c('File', 'FileName', 'PeptideModifiedSequence', 'FragmentIon',
+                'PrecursorCharge', 'ProductCharge')
+
   if(!is.null(labels)){
+    if(!labels %in% names(data)){
+      errorReporting('Arg: labels; should be a column in the data provided')
+    }
     id.vars <- c(id.vars, labels)
   }
 

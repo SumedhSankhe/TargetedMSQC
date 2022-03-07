@@ -129,7 +129,7 @@ CleanUpChromatograms <- function(chromatogram.path = NULL,
     # build the peak group for each (File,FileName,peptide,precursorcharge) trio:
     #the only difference with the chromatogram group is that the peak boundaries are applied.
     packageStartupMessage("Applying Peak Boundaries ...", appendLF = F)
-    chrom.data[, PeakGroup := applyPeakBoundary(chromGroup = ChromGroup[[1]],
+    chrom.data[, PeakGroup := ApplyPeakBoundary(chromGroup = ChromGroup[[1]],
                                                 minStartTime = MinStartTime[1],
                                                 maxEndTime = MaxEndTime[1]),
                .(File, FileName, PeptideModifiedSequence, PrecursorCharge)]
@@ -448,10 +448,10 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
 #'
 #' chrom <- data.CSF$data$ChromGroup[[1]]
 #' PlotChromPeak(chrom)
-#' peak <- applyPeakBoundary(chrom,c(data.CSF$data$MinStartTime[[1]],data.CSF$data$MaxEndTime[[1]]))
+#' peak <- ApplyPeakBoundary(chrom,c(data.CSF$data$MinStartTime[[1]],data.CSF$data$MaxEndTime[[1]]))
 #' PlotChromPeak(peak)
 
-applyPeakBoundary <- function(chromGroup, minStartTime, maxEndTime){
+ApplyPeakBoundary <- function(chromGroup, minStartTime, maxEndTime){
   tryCatch({
     idx <-  which(chromGroup$time > minStartTime & chromGroup$time < maxEndTime)
     if (length(idx) == 3) {

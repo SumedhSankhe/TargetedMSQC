@@ -10,8 +10,6 @@ License: GPL-2
 LazyData: TRUE
 Imports:
 	ggplot2,
-	dplyr,
-	tidyr,
 	methods,
 	plotly,
 	psych,
