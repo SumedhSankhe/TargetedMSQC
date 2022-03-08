@@ -2,19 +2,31 @@
 % Please edit documentation in R/metrics.R
 \name{CalculatePeakElutionShift}
 \alias{CalculatePeakElutionShift}
-\title{Compute pairwise elution shift of transition peaks in a peak group of class peakObj.}
+\title{Compute pairwise elution shift of transition peaks in a peak group object.}
 \usage{
 CalculatePeakElutionShift(peak, ...)
 }
 \arguments{
-\item{peak}{A peak group of class peakObj}
+\item{peak}{A peak group object}
 }
 \value{
 A list with the following objects:
-              r.shift: A numeric matrix where the non-diagonal elements represent the pairwise shift between transition peaks and diagonal  elements represent the shift between each transition peak relative to the median time at max of all the transition peaks in the peak group.
+              r.shift: A numeric matrix where the non-diagonal elements
+              represent the pairwise shift between transition peaks and diagonal
+              elements represent the shift between each transition peak relative
+              to the median time at max of all the transition peaks in the
+              peak group.
 }
 \description{
-The function takes a peak group of class peakObj as input and calculates the pairwise shift between transition peaks in the peak group using the CalculateElutionShift function. The shift between two transition peaks is defined as the difference between time at max for the two peaks normalized by the peak width at base. The shift between an individual transition peak relative to the peak group is defined as the different between time at mas of the transition peak and the median of time at max of all the peaks in the peak group normalized by the peak width at base. For high quality peaks, the elution shift is expected to be close to 0.
+The function takes a peak group object as input and calculates the pairwise
+shift between transition peaks in the peak group using the CalculateElutionShift
+function. The shift between two transition peaks is defined as the difference
+between time at max for the two peaks normalized by the peak width at base.
+The shift between an individual transition peak relative to the peak group is
+defined as the different between time at mas of the transition peak and the
+median of time at max of all the peaks in the peak group normalized by the
+peak width at base. For high quality peaks, the elution shift is expected to
+be close to 0.
 }
 \examples{
 

@@ -1,3 +1,15 @@
+#' This file contains all the helper functions required for the qc process
+
+#' Return a vector of all the iRT standard used for the experiment. This is
+#'
+#'
+#' @export
+#'
+#' @examples
+#'
+#' standards <- iRTList()
+#' standards
+
 iRTList <- function(){
   invisible(c("LGGNETQVR","AGGSSEPVTGLADK","VEATFGVDESANK","YILAGVESNK",
               "TPVISGGPYYER","TPVITGAPYYER","GDLDAASYYAPVR","DAVTPADFSEWS0K",
@@ -231,6 +243,10 @@ peakArea <- function(x, req=NA){
   }
 }
 
+#' Plot Chromatograms
+#'
+#' @export
+#'
 plot_chrom <- function(peak, font.size = 14, transition.list = NA,
                        label.list = NA, split.label = TRUE){
 
@@ -287,6 +303,10 @@ violin_plot <- function(x, data, labels, id.vars, font.size){
   p
 }
 
+#' Plot QC Summary
+#'
+#' @export
+#'
 plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
                             font.size = 14){
 

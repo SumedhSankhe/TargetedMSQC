@@ -220,7 +220,8 @@ CleanUpChromatograms <- function(chromatogram.path = NULL,
 #'               features: A dataframe with columns that contain the calculated
 #'               QC features for each transition pair in the input data.
 #'
-#' @import data.table
+#'
+#' @export
 #'
 #' @examples
 #'
@@ -281,7 +282,7 @@ ExtractFeatures <- function(data, blanks = NA, intensity.threshold = 1000,
     IsotopeLabelType=IsotopeLabelType), by = id]
   message(Sys.time(), ' : Done')
 
-  message(Sys.time(),' Extracting FWHM Feature')
+  message(Sys.time(),' : Extracting FWHM Feature')
   fwhm.cols <- c('PeakGroupFWHM.m','PeakGroupFWHM2base.m',
                  'TransitionFWHM2base','TransitionFWHM','IsotopeFWHM2base',
                  'IsotopeFWHM')

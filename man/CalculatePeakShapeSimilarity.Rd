@@ -2,20 +2,27 @@
 % Please edit documentation in R/metrics.R
 \name{CalculatePeakShapeSimilarity}
 \alias{CalculatePeakShapeSimilarity}
-\title{Compute similarity scores for transition peaks in a peak group of class peakObj.}
+\title{Compute similarity scores for transition peaks in a peak group object.}
 \usage{
 CalculatePeakShapeSimilarity(peak, ...)
 }
 \arguments{
-\item{peak}{A peak group of class peakObj}
+\item{peak}{A peak group object}
 }
 \value{
 A list with the following objects:
-              r.similarity: A numeric matrix of pairwise similarity scores for transition peaks in the peak group.
-              peak.jaggedness: Mean of the r.similarity. vector. This score represents the overall similarity of all the transitions in the peak group.
+              r.similarity: A numeric matrix of pairwise similarity scores
+              for transition peaks in the peak group.
+              peak.jaggedness: Mean of the r.similarity. vector. This score
+              represents the overall similarity of all the transitions in the
+              peak group.
 }
 \description{
-The function takes a peak group of class peakObj as input and calculates pairwise similarity scores for the transition peaks in the peak group. Similarity score is defined as the Pearson correlation coefficient between the signal intensity vectors of the two peaks. For high quality peaks, the similarity score is expected to be close to 1.
+The function takes a peak group object as input and calculates
+pairwise similarity scores for the transition peaks in the peak group.
+Similarity score is defined as the Pearson correlation coefficient between
+the signal intensity vectors of the two peaks. For high quality peaks, the
+similarity score is expected to be close to 1.
 }
 \examples{
 

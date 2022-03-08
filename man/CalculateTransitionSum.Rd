@@ -2,23 +2,32 @@
 % Please edit documentation in R/metrics.R
 \name{CalculateTransitionSum}
 \alias{CalculateTransitionSum}
-\title{Compute the sum of transition peaks in a peak group of class peakObj}
+\title{Compute the sum of transition peaks in a peak group object}
 \usage{
-CalculateTransitionSum(peak, endogenous.label = "light",
-  standard.label = "heavy", ...)
+CalculateTransitionSum(
+  peak,
+  endogenous.label = "light",
+  standard.label = "heavy"
+)
 }
 \arguments{
-\item{peak}{A peak group of class peakObj}
+\item{peak}{A peak group object}
 
 \item{endogenous.label}{Label of the endogenous analyte: default is "light"}
 
-\item{standard.label}{Label of the spiked-in isotopically labeled analyte: default is "heavy"}
+\item{standard.label}{Label of the spiked-in isotopically labeled analyte:
+default is "heavy"}
 }
 \value{
-A peak group of class peakObj, which contains two peaks: sum of light transition peaks and sum of heavy transition peaks in the input peak group
+A peak group object, which contains two peaks: sum of light transition
+peaks and sum of heavy transition peaks in the input peak group
 }
 \description{
-The function takes a peak group of class peakObj as input and calculates the sum of the peak intensities of transition peaks with identical labels. For example, all the endogenous transition peaks with labels of "light" will be added up to create the "sum.0.light" peak and all the spiked-in standard transition peaks with labels of "heavy" will be added up to create the "sum.0.heavy" peak.
+The function takes a peak group object as input and calculates the sum of the
+peak intensities of transition peaks with identical labels. For example, all
+the endogenous transition peaks with labels of "light" will be added up to
+create the "sum.0.light" peak and all the spiked-in standard transition peaks
+with labels of "heavy" will be added up to create the "sum.0.heavy" peak.
 }
 \examples{
 

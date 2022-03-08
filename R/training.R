@@ -147,6 +147,15 @@ MakeDataSet <- function(feature.path = NULL, training.path = NULL,
                         "PeptideModifiedSequence", "FragmentIon","PrecursorCharge",
                         "ProductCharge")
 
+  if(!is.null(training.data) & !is.data.table(training.data)){
+    training.data <- as.data.table(training.data)
+  }
+
+  if(!is.null(feature.data) & !is.data.table(feature.data)){
+    feature.data <- as.data.table(feature.data)
+  }
+
+
   if(is.null(feature.data) && !is.null(feature.path)){
     feature.files <- sort(list.files(feature.path, pattern = '.csv'))
     feature.data <- rbindlist(lapply(feature.files, fread))
@@ -303,7 +312,7 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
 
   #parallel system check
   dots <- list(...)
-  if(dots$parallel & !is.na(dots$workers)){
+  if(!is.null(dots$parallel) & !is.null(dots$workers)){
     message(Sys.time(),' : Setting up ',dots$workers,' workers for parallel model training')
     cl <- parallel::makePSOCKcluster(dots$workers)
     doParallel::registerDoParallel(cl)
@@ -323,7 +332,7 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
 
   }
   message(Sys.time(), ' : Model Training Complete')
-  if(dots$parallel){
+  if(!is.null(dots$parallel)){
     message(Sys.time(),' : Stopping Cluster')
     parallel::stopCluster(cl)
   }

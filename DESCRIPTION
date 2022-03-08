@@ -18,11 +18,13 @@ Imports:
 	Biobase,
 	data.table,
 	caret,
+	doParallel,
+	RRF,
 	ComplexHeatmap,
 	circlize,
 	grid
 Suggests:
 	knitr,
     rmarkdown
-RoxygenNote: 6.0.1
+RoxygenNote: 7.1.2
 VignetteBuilder: knitr

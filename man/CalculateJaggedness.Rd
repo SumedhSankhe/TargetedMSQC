@@ -2,20 +2,35 @@
 % Please edit documentation in R/metrics.R
 \name{CalculateJaggedness}
 \alias{CalculateJaggedness}
-\title{Compute the jaggedness score for a transition peak.}
+\title{This file contains the functions that calculate the QC metrics for peaks and
+peak groups.
+Compute the jaggedness score for a transition peak.}
 \usage{
 CalculateJaggedness(sig, flatness.factor = 0.05, ...)
 }
 \arguments{
 \item{sig}{A numeric vector representing a transition peak}
 
-\item{flatness.factor}{A numeric parameter between 0 and 1 that determines the sensitivity of the jaggedness score to low levels of noise. To avoid high jaggedness scores due to small levels of noise, near-flat ranges in the peak are artificially flattened before calculating the jaggedness score. A range is defined as near-flat and thus flattened when the difference between intensities of adjacent time points is smaller than flatness.factor times the peak maximum intensity.}
+\item{flatness.factor}{A numeric parameter between 0 and 1 that determines
+the sensitivity of the jaggedness score to low levels of noise. To avoid high
+jaggedness scores due to small levels of noise, near-flat ranges in the peak
+are artificially flattened before calculating the jaggedness score. A range
+is defined as near-flat and thus flattened when the difference between
+intensities of adjacent time points is smaller than flatness.factor times the
+peak maximum intensity.}
 }
 \value{
-The numeric value of jaggedness score for the transition peak, which is defined as the fraction of timepoints where the signal changes direction
+The numeric value of jaggedness score for the transition peak, which
+is defined as the fraction of timepoints where the signal changes direction
 }
 \description{
-The function takes a numeric vector representing a transition peak as input and calculates the jaggedness score for the peak. The jaggedness score is defined as the fraction of timepoints where the signal changes direction, excluding the change of direction at the peak apex. This function can be called independently, however it is mainly meant to be called by CalculatePeakJaggedness to calculate the jaggedness metric for a peak group. For high quality peaks, the jaggedness score is expected to be close to 0.
+The function takes a numeric vector representing a transition peak as input
+and calculates the jaggedness score for the peak. The jaggedness score is
+defined as the fraction of timepoints where the signal changes direction,
+excluding the change of direction at the peak apex. This function can be
+called independently, however it is mainly meant to be called by
+CalculatePeakJaggedness to calculate the jaggedness metric for a peak group.
+For high quality peaks, the jaggedness score is expected to be close to 0.
 }
 \examples{
 

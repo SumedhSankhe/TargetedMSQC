@@ -3,7 +3,6 @@
 \docType{package}
 \name{TargetedMSQC}
 \alias{TargetedMSQC}
-\alias{TargetedMSQC-package}
 \title{TargetedMSQC: a tool for quality assessment and interference detection in targeted mass spectrometry data using machine learning}
 \description{
 TargetedMSQC provides a semi-automated workflow for quality control (QC) of chromatographic peaks in targeted proteomics experiments, with the aim of improving the efficiency and reducing the subjectivity of data QC. The package offers a toolkit to build and apply statistical models for predicting peak qualities in proteomics datasets using supervised learning methods. The package contains functions to calculate an ensemble of >30 well-established and newly introduced peak quality metrics, such as jaggedness, FWHM, modality, shift, coefficient of variation, consistency of transition peak area ratios, etc., to quantify the quality of chromatographic peaks. These quality control metrics calculated in a training dataset of peaks with pre-annotated quality status labels are used as the feature set in supervised learning algorithms to flag peaks with poor chromatography or interference in other targeted proteomics experiments.

@@ -2,18 +2,22 @@
 % Please edit documentation in R/metrics.R
 \name{CalculateMaxBoundaryIntensity}
 \alias{CalculateMaxBoundaryIntensity}
-\title{Compute maximum intensity at the peak boundary of each transition peak in a peak group of class peakObj.}
+\title{Compute maximum intensity at the peak boundary of each transition peak in a
+peak group object.}
 \usage{
 CalculateMaxBoundaryIntensity(peak, ...)
 }
 \arguments{
-\item{peak}{A peak group of class peakObj}
+\item{peak}{A peak group object}
 }
 \value{
-A numeric vector of maximum intensity at peak boundary for individual transition peaks in the peak group
+A numeric vector of maximum intensity at peak boundary for individual
+transition peaks in the peak group
 }
 \description{
-The function takes a peak group of class peakObj as input and returns a numeric vector of maximum intensity at peak boundary for individual transition peaks in the peak group.
+The function takes a peak group object as input and returns a numeric vector
+of maximum intensity at peak boundary for individual transition peaks in the
+peak group.
 }
 \examples{
 

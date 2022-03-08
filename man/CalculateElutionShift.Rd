@@ -7,7 +7,8 @@
 CalculateElutionShift(sig1, sig2, time, ...)
 }
 \arguments{
-\item{sig1}{A numeric vector representing a transition peak whose relative elution shift to the reference peak is to be calculated.}
+\item{sig1}{A numeric vector representing a transition peak whose relative
+elution shift to the reference peak is to be calculated.}
 
 \item{sig2}{A numeric vector representing the reference peak.}
 
@@ -17,7 +18,15 @@ CalculateElutionShift(sig1, sig2, time, ...)
 Numeric value of the relative shift (no unit) between sig1 and sig2.
 }
 \description{
-The function takes two numeric vectors representing transition peaks as input and calculates their relative shift. Additionally, it needs to timepoints corresponding to the input transition peaks. The shift between these transition peaks is defined as the difference between time at max for the two peaks normalized by the peak width at base. This function should only be used for peaks that belong to the same peak group and have the same peak boundary and timepoints. Although this function can be used independently, it is meant to be called by CalculatePeakElutionShift. For high quality peaks, the elution shift is expected to be close to 0.
+The function takes two numeric vectors representing transition peaks as input
+and calculates their relative shift. Additionally, it needs to timepoints
+corresponding to the input transition peaks. The shift between these
+transition peaks is defined as the difference between time at max for the two
+peaks normalized by the peak width at base. This function should only be used
+for peaks that belong to the same peak group and have the same peak boundary
+and timepoints. Although this function can be used independently, it is meant
+to be called by CalculatePeakElutionShift. For high quality peaks, the elution
+shift is expected to be close to 0.
 }
 \examples{
 

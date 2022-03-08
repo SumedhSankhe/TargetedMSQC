@@ -2,22 +2,34 @@
 % Please edit documentation in R/metrics.R
 \name{CalculateModality}
 \alias{CalculateModality}
-\title{Compute modality scores for transition peaks in a peak group of class peakObj.}
+\title{Compute modality scores for transition peaks in a peak group object.}
 \usage{
 CalculateModality(peak, flatness.factor = 0.05, ...)
 }
 \arguments{
-\item{peak}{A peak group of class peakObj}
+\item{peak}{A peak group object}
 
-\item{flatness.factor}{A numeric parameter between 0 and 1 that determines the sensitivity of the modality score to low levels of noise. To avoid high modality scores due to small levels of noise, near-flat ranges in the peak are artificially flattened before calculating the modality score. A range is defined as near-flat and thus flattened when the difference between intensities of adjacent time points is smaller than flatness.factor times the peak maximum intensity.}
+\item{flatness.factor}{A numeric parameter between 0 and 1 that determines
+the sensitivity of the modality score to low levels of noise. To avoid high
+modality scores due to small levels of noise, near-flat ranges in the peak
+are artificially flattened before calculating the modality score. A range is
+defined as near-flat and thus flattened when the difference between intensities
+of adjacent time points is smaller than flatness.factor times the peak maximum
+intensity.}
 }
 \value{
 A list with the following objects:
-              r.modality: A numeric vector of modality scores for each transition in the peak group.
-              peak.modality: Mean of the r.modality vector. This score represents the overall modality of all the transitions in the peak group.
+              r.modality: A numeric vector of modality scores for each
+              transition in the peak group.
+              peak.modality: Mean of the r.modality vector. This score
+              represents the overall modality of all the transitions in the
+              peak group.
 }
 \description{
-The function takes a peak group of class peakObj as input and calculates the modality score for the transition peaks in the peak group. Modality score is defined as the largest unexpected dip in the peak, normalized by peak height. For high quality peaks, the modality score is expected to be close to 0.
+The function takes a peak group object as input and calculates the
+modality score for the transition peaks in the peak group. Modality score is
+defined as the largest unexpected dip in the peak, normalized by peak height.
+For high quality peaks, the modality score is expected to be close to 0.
 }
 \examples{
 

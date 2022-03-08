@@ -33,27 +33,22 @@
 #' PlotChromPeak(peak,transition.list = c("y6"))
 
 CalculateJaggedness <- function(sig, flatness.factor = 0.05, ...) {
-  tryCatch({
-    if(length(sig)<3){
-      errorReporting("input sig should be a numeric vector with at least 3 elements")
-    }
-    if (flatness.factor < 0 || flatness.factor > 1) {
-      errorReporting("flatness.factor should be a numeric value between 0 and 1")
-    }
-    #   changes in the sign of differential of the peak is used to quantify the jaggedness of the peak
-    diff.sig <- diff(sig)
-    #   the near-flat ranges of peak, where the differential is less than flatness.factor x peak max are assumed to be flat in measurements of jaggedness
-    diff.sig[which(abs(diff.sig) < flatness.factor*max(abs(sig)))] = 0
-    #   jaggeddness is calculated
-    jaggedness <- (sum(abs(diff(sign(diff.sig))) > 1) - 1)/(length(diff.sig) - 1)
-    #   if jaggedness is negative return zero
-    jaggedness <- max(0,jaggedness)
-    # return output
-    return(round(jaggedness,digits = 4))
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  if(length(sig)<3){
+    errorReporting("input sig should be a numeric vector with at least 3 elements")
+  }
+  if (flatness.factor < 0 || flatness.factor > 1) {
+    errorReporting("flatness.factor should be a numeric value between 0 and 1")
+  }
+  #   changes in the sign of differential of the peak is used to quantify the jaggedness of the peak
+  diff.sig <- diff(sig)
+  #   the near-flat ranges of peak, where the differential is less than flatness.factor x peak max are assumed to be flat in measurements of jaggedness
+  diff.sig[which(abs(diff.sig) < flatness.factor*max(abs(sig)))] = 0
+  #   jaggeddness is calculated
+  jaggedness <- (sum(abs(diff(sign(diff.sig))) > 1) - 1)/(length(diff.sig) - 1)
+  #   if jaggedness is negative return zero
+  jaggedness <- max(0,jaggedness)
+  # return output
+  return(round(jaggedness,digits = 4))
 }
 
 #' Compute jaggedness scores for transition peaks in a peak group object.
@@ -86,19 +81,13 @@ CalculateJaggedness <- function(sig, flatness.factor = 0.05, ...) {
 #' peak.group.jaggedness <- CalculatePeakJaggedness(peak)
 
 CalculatePeakJaggedness <- function(peak, flatness.factor = 0.05, ...) {
-  tryCatch({
-    dots <- list(...)
-    jag <- do.call('c', lapply(peak$sig, CalculateJaggedness, flatness.factor))
-    m <- mean(jag)
-    tr <- paste(dots, collapse = '.')
-    iso <- round(mean(jag[grep(dots$IsotopeLabelType, names(jag))]),4)
-    list(m, jag[tr], iso)
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  dots <- list(...)
+  jag <- do.call('c', lapply(peak$sig, CalculateJaggedness, flatness.factor))
+  m <- mean(jag)
+  tr <- paste(dots, collapse = '.')
+  iso <- round(mean(jag[grep(dots$IsotopeLabelType, names(jag))]),4)
+  list(m, jag[tr], iso)
 }
-
 
 #' Compute symmetry scores for transition peaks in a peak group object.
 #'
@@ -124,32 +113,26 @@ CalculatePeakJaggedness <- function(peak, flatness.factor = 0.05, ...) {
 #' peak.group.symmetry <- CalculatePeakSymmetry(peak)
 
 CalculatePeakSymmetry <- function(peak,...) {
-  tryCatch({
-    if(is.na(peak) || is.null(peak)){
-      errorReporting("input peak should not be empty or NA")
-    }
+  if(is.na(peak) || is.null(peak)){
+    errorReporting("input peak should not be empty or NA")
+  }
 
-    dots <- list(...)
-    sig <- peak$sig
-    # left and right half of the peak
-    left <- sig[1:floor(nrow(sig)/2),]
-    right <- sig[seq(nrow(sig), nrow(sig) + 1 - floor(nrow(sig)/2), by = -1),]
+  dots <- list(...)
+  sig <- peak$sig
+  # left and right half of the peak
+  left <- sig[1:floor(nrow(sig)/2),]
+  right <- sig[seq(nrow(sig), nrow(sig) + 1 - floor(nrow(sig)/2), by = -1),]
 
-    # pearson correlation coefficient between sig and the ref peak
-    r.symmetry <- diag(suppressWarnings(cor(left,right,method = "pearson")))
+  # pearson correlation coefficient between sig and the ref peak
+  r.symmetry <- diag(suppressWarnings(cor(left,right,method = "pearson")))
 
-    # replace NA values with 1. cor returns NA if there is missing data or if
-    # right and left half are identical as seen in all zero signals
-    r.symmetry[is.na(r.symmetry)] <- 1
-    peak.symmetry <- round(mean(r.symmetry),digits = 4)
-    tr <- paste(dots, collapse = '.')
-    iso <- round(mean(r.symmetry[grep(dots$IsotopeLabelType, names(r.symmetry))]),4)
-    list(peak.symmetry, r.symmetry[tr], iso)
-
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  # replace NA values with 1. cor returns NA if there is missing data or if
+  # right and left half are identical as seen in all zero signals
+  r.symmetry[is.na(r.symmetry)] <- 1
+  peak.symmetry <- round(mean(r.symmetry),digits = 4)
+  tr <- paste(dots, collapse = '.')
+  iso <- round(mean(r.symmetry[grep(dots$IsotopeLabelType, names(r.symmetry))]),4)
+  list(peak.symmetry, r.symmetry[tr], iso)
 }
 
 
@@ -179,36 +162,30 @@ CalculatePeakSymmetry <- function(peak,...) {
 #' peak.group.similarity <- CalculatePeakShapeSimilarity(peak)
 
 CalculatePeakShapeSimilarity <- function(peak,...) {
-  tryCatch({
-    if(is.na(peak) || is.null(peak)){
-      errorReporting("input peak should not be empty or NA")
-    }
-    dots <- list(...)
-    grps <- levels(dots$IsotopeLabelType)
-    dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
+  if(is.na(peak) || is.null(peak)){
+    errorReporting("input peak should not be empty or NA")
+  }
+  dots <- list(...)
+  grps <- levels(dots$IsotopeLabelType)
+  dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
 
-    # pearson correlation coefficient between sig and the ref peak
-    r.similarity <- psych::corr.test(peak$sig,method = "pearson", adjust = "holm",
-                                     alpha = .05,ci = TRUE)$r
-    # NA values are imputed to 0. they are a result of all zero signals.
-    r.similarity[is.na(r.similarity)] <- 0
+  # pearson correlation coefficient between sig and the ref peak
+  r.similarity <- psych::corr.test(peak$sig,method = "pearson", adjust = "holm",
+                                   alpha = .05,ci = TRUE)$r
+  # NA values are imputed to 0. they are a result of all zero signals.
+  r.similarity[is.na(r.similarity)] <- 0
 
-    # with the exception of the diagonal NA values which must be imputed to 1.
-    diag(r.similarity) <- 1
-    peak.similarity <- round(mean(r.similarity),digits = 4)
+  # with the exception of the diagonal NA values which must be imputed to 1.
+  diag(r.similarity) <- 1
+  peak.similarity <- round(mean(r.similarity),digits = 4)
 
-    iso <- r.similarity[grep(dots$IsotopeLabelType, colnames(r.similarity)),
-                        grep(dots$IsotopeLabelType, rownames(r.similarity))]
-    iso <- round(mean(abs(iso)), digits = 4)
-    pairs <- sprintf("%s.%s.%s",dots$FragmentIon,dots$ProductCharge, grps)
-    pairs <- r.similarity[pairs[1], pairs[2]]
+  iso <- r.similarity[grep(dots$IsotopeLabelType, colnames(r.similarity)),
+                      grep(dots$IsotopeLabelType, rownames(r.similarity))]
+  iso <- round(mean(abs(iso)), digits = 4)
+  pairs <- sprintf("%s.%s.%s",dots$FragmentIon,dots$ProductCharge, grps)
+  pairs <- r.similarity[pairs[1], pairs[2]]
 
-    list(peak.similarity, pairs, iso)
-
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  list(peak.similarity, pairs, iso)
 }
 
 
@@ -249,23 +226,18 @@ CalculateElutionShift <- function(sig1,sig2,time,...) {
     errorReporting('sig1, sig2 and time should be numeric vectors of equal length')
   }
 
-  tryCatch({
-    # if at least one of the inputs is all zeros, return 0 for the peak shift
-    if ((abs(sum(sig1)) == 0) || (abs(sum(sig2)) == 0)) {
-      return(0L)
-    }
-    # peak shift is the difference between time at max of the two signals. If
-    # there are multiple points with max intensity the smallest shift is used.
-    idx1 <- which(sig1 == max(sig1))
-    idx2 <- which(sig2 == max(sig2))
+  # if at least one of the inputs is all zeros, return 0 for the peak shift
+  if ((abs(sum(sig1)) == 0) || (abs(sum(sig2)) == 0)) {
+    return(0L)
+  }
+  # peak shift is the difference between time at max of the two signals. If
+  # there are multiple points with max intensity the smallest shift is used.
+  idx1 <- which(sig1 == max(sig1))
+  idx2 <- which(sig2 == max(sig2))
 
-    peak.shift <- min(abs(time[idx1]-time[idx2])/(tail(time,1) - head(time,1)))
-    # return output
-    return(round(peak.shift,digits = 4))
-  }, error = function(e){
-    beepr::beep(8)
-    errorReporting(e$message)
-  })
+  peak.shift <- min(abs(time[idx1]-time[idx2])/(tail(time,1) - head(time,1)))
+  # return output
+  return(round(peak.shift,digits = 4))
 }
 
 #' Compute pairwise elution shift of transition peaks in a peak group object.
@@ -301,72 +273,67 @@ CalculatePeakElutionShift <- function(peak,...) {
     errorReporting('input peak should be non-empty and object')
   }
 
-  tryCatch({
-    # elution shift is calculated for each pair of transitions in the peak group
-    # using the CalculateElutionShift function
-    r.shift <- data.table(t(combn(colnames(peak$sig), 2)))
-    setnames(r.shift, names(r.shift), c('ion', 'ion2'))
-    r.shift[, id := .I]
-    r.shift[, shift := CalculateElutionShift(
-      sig1 = peak$sig[ion], sig2 = peak$sig[ion2], time = peak$time
-    ), id]
+  # elution shift is calculated for each pair of transitions in the peak group
+  # using the CalculateElutionShift function
+  r.shift <- data.table(t(combn(colnames(peak$sig), 2)))
+  setnames(r.shift, names(r.shift), c('ion', 'ion2'))
+  r.shift[, id := .I]
+  r.shift[, shift := CalculateElutionShift(
+    sig1 = peak$sig[ion], sig2 = peak$sig[ion2], time = peak$time
+  ), id]
 
-    r.shift[, id := NULL]
-    r.shift <- dcast(r.shift, ion2~ion, value.var = 'shift')
-    new.cols <- setdiff(colnames(peak$sig),colnames(r.shift))
-    r.shift[, (new.cols) := NA]
+  r.shift[, id := NULL]
+  r.shift <- dcast(r.shift, ion2~ion, value.var = 'shift')
+  new.cols <- setdiff(colnames(peak$sig),colnames(r.shift))
+  r.shift[, (new.cols) := NA]
 
-    new.rows <- setdiff(colnames(peak$sig), r.shift$ion2)
-    ndt <- data.table(ion2 = new.rows)
-    ndt[,(colnames(r.shift)[-1]) := NA]
-    r.shift <- rbindlist(list(r.shift, ndt))
-    class(r.shift) <- 'data.frame'
-    rownames(r.shift) <- r.shift$ion2
-    r.shift$ion2 <- NULL
-    # the rows and columns are ordered according to the order of the transitions
-    # in the peak object
-    r.shift <- r.shift[names(peak$area),names(peak$area)]
+  new.rows <- setdiff(colnames(peak$sig), r.shift$ion2)
+  ndt <- data.table(ion2 = new.rows)
+  ndt[,(colnames(r.shift)[-1]) := NA]
+  r.shift <- rbindlist(list(r.shift, ndt))
+  class(r.shift) <- 'data.frame'
+  rownames(r.shift) <- r.shift$ion2
+  r.shift$ion2 <- NULL
+  # the rows and columns are ordered according to the order of the transitions
+  # in the peak object
+  r.shift <- r.shift[names(peak$area),names(peak$area)]
 
-    # shift for each transition vs the peak groups is determined by the difference
-    # between time at max for each transition and the median of time at max for
-    # all the transitions in the peak group.
-    max.intensity.times <- peak$time[rapply(peak$sig, which.max, how = 'unlist')]
+  # shift for each transition vs the peak groups is determined by the difference
+  # between time at max for each transition and the median of time at max for
+  # all the transitions in the peak group.
+  max.intensity.times <- peak$time[rapply(peak$sig, which.max, how = 'unlist')]
 
-    diag(r.shift) <- round(abs(max.intensity.times - median(max.intensity.times))/(tail(peak$time,1) - head(peak$time,1)),digits = 4)
+  diag(r.shift) <- round(abs(max.intensity.times - median(max.intensity.times))/(tail(peak$time,1) - head(peak$time,1)),digits = 4)
 
-    # the NA values in this matrix correspond to transition pairs that are ordered
-    # differently. NAs fpr (tr1,tr2) transitions pairs are replaced by the peak
-    # elution shift calculated for (tr2,tr1) pairs
-    ind_na <- which(is.na(r.shift), TRUE)
-    if (nrow(ind_na) == 1) {
-      r.shift[ind_na] <- r.shift[ind_na[1,2],ind_na[1,1]]
-    } else{
-      r.shift[ind_na] <- r.shift[ind_na[,2:1]]
-    }
+  # the NA values in this matrix correspond to transition pairs that are ordered
+  # differently. NAs fpr (tr1,tr2) transitions pairs are replaced by the peak
+  # elution shift calculated for (tr2,tr1) pairs
+  ind_na <- which(is.na(r.shift), TRUE)
+  if (nrow(ind_na) == 1) {
+    r.shift[ind_na] <- r.shift[ind_na[1,2],ind_na[1,1]]
+  } else{
+    r.shift[ind_na] <- r.shift[ind_na[,2:1]]
+  }
 
-    # format output
-    r.shift <- as.matrix(r.shift)
-    #shift <- list(r.shift = r.shift)
+  # format output
+  r.shift <- as.matrix(r.shift)
+  #shift <- list(r.shift = r.shift)
 
-    dots <- list(...)
-    grps <- levels(dots$IsotopeLabelType)
-    dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
-    tr <- paste(dots, collapse = '.')
-    iso <- matrix(r.shift[grep(dots$IsotopeLabelType, colnames(r.shift)),
-                          grep(dots$IsotopeLabelType, rownames(r.shift))])
-    iso <- round(mean(diag(abs(iso))), digits = 4)
-    iso <- ifelse(is.nan(iso), 0, iso)
-    pair <- sprintf("%s.%s.%s",dots$FragmentIon,dots$ProductCharge, grps)
-    pair <- r.shift[pair[1], pair[2]]
-    # return output
-    list(round(mean(diag(abs(r.shift))),digits = 4),
-         pair,
-         iso,
-         r.shift[tr,tr])
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  dots <- list(...)
+  grps <- levels(dots$IsotopeLabelType)
+  dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
+  tr <- paste(dots, collapse = '.')
+  iso <- matrix(r.shift[grep(dots$IsotopeLabelType, colnames(r.shift)),
+                        grep(dots$IsotopeLabelType, rownames(r.shift))])
+  iso <- round(mean(diag(abs(iso))), digits = 4)
+  iso <- ifelse(is.nan(iso), 0, iso)
+  pair <- sprintf("%s.%s.%s",dots$FragmentIon,dots$ProductCharge, grps)
+  pair <- r.shift[pair[1], pair[2]]
+  # return output
+  list(round(mean(diag(abs(r.shift))),digits = 4),
+       pair,
+       iso,
+       r.shift[tr,tr])
 }
 
 
@@ -376,45 +343,40 @@ CalculatePeakElutionShift <- function(peak,...) {
 #' parent function
 #'
 calc.fwhm <- function(sig,time) {
-  tryCatch({
-    # find the peak max
-    peakmax <- max(sig)
-    # determine the first timepoint that crosses the half line
-    left.index <- c(which(sig - peakmax/2 > 0)[1] - 1,
-                    which(sig - peakmax/2 > 0)[1])
+  # find the peak max
+  peakmax <- max(sig)
+  # determine the first timepoint that crosses the half line
+  left.index <- c(which(sig - peakmax/2 > 0)[1] - 1,
+                  which(sig - peakmax/2 > 0)[1])
 
-    right.index <- c(tail(which(sig - peakmax/2 > 0),1),
-                     tail(which(sig - peakmax/2 > 0),1) + 1)
+  right.index <- c(tail(which(sig - peakmax/2 > 0),1),
+                   tail(which(sig - peakmax/2 > 0),1) + 1)
 
-    # if the leftmost left.index  is 0, which can happen if the peak value on the
-    # boundary is high, or if it's NA, which can happen if sig is all zeros, assign
-    # the peak boundary value to them:
-    if (left.index[1] == 0 || is.na(left.index[1])) {
-      t.left <- time[1]
-    } else {
-      # use linear interpolation to find the timepoint at half max.
-      t.left <- (time[left.index[2]] - time[left.index[1]])/(sig[left.index[2]] - sig[left.index[1]])*(peakmax/2 - sig[left.index[1]]) + time[left.index[1]]
-    }
-    # if the rightmost right.index  is greater than length of time, which can
-    # happen if the peak value on the boundary is high, or if it's NA, which can
-    # happen if sig is all zeros, assign the peak boundary value to them:
-    if (right.index[2] > length(time) || is.na(right.index[2])) {
-      t.right <- tail(time,1)}
-    else {
-      t.right <- (time[right.index[2]] - time[right.index[1]])/(sig[right.index[2]] - sig[right.index[1]])*(peakmax/2 - sig[right.index[1]]) + time[right.index[1]]
-    }
-    # if t.left or t.right returns nothing, which can happen if the peak value on
-    # the boundary is high assign the peak boundary value to them:
-    if (length(t.left) == 0) t.left <- time[1]
-    if (length(t.right) == 0) t.right <- tail(time,1)
-    # fwhm is the difference in time between the two timepoints that are crossed
-    # by the half max line
-    fwhm <- t.right - t.left
-    return(fwhm)
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  # if the leftmost left.index  is 0, which can happen if the peak value on the
+  # boundary is high, or if it's NA, which can happen if sig is all zeros, assign
+  # the peak boundary value to them:
+  if (left.index[1] == 0 || is.na(left.index[1])) {
+    t.left <- time[1]
+  } else {
+    # use linear interpolation to find the timepoint at half max.
+    t.left <- (time[left.index[2]] - time[left.index[1]])/(sig[left.index[2]] - sig[left.index[1]])*(peakmax/2 - sig[left.index[1]]) + time[left.index[1]]
+  }
+  # if the rightmost right.index  is greater than length of time, which can
+  # happen if the peak value on the boundary is high, or if it's NA, which can
+  # happen if sig is all zeros, assign the peak boundary value to them:
+  if (right.index[2] > length(time) || is.na(right.index[2])) {
+    t.right <- tail(time,1)}
+  else {
+    t.right <- (time[right.index[2]] - time[right.index[1]])/(sig[right.index[2]] - sig[right.index[1]])*(peakmax/2 - sig[right.index[1]]) + time[right.index[1]]
+  }
+  # if t.left or t.right returns nothing, which can happen if the peak value on
+  # the boundary is high assign the peak boundary value to them:
+  if (length(t.left) == 0) t.left <- time[1]
+  if (length(t.right) == 0) t.right <- tail(time,1)
+  # fwhm is the difference in time between the two timepoints that are crossed
+  # by the half max line
+  fwhm <- t.right - t.left
+  return(fwhm)
 }
 
 
@@ -448,28 +410,23 @@ CalculateFWHM <- function(peak, ...) {
     errorReporting('input peak should be non-empty and object')
   }
 
-  tryCatch({
-    # calculate fwhm for each transition
-    dots <- list(...)
-    grp <- levels(dots$IsotopeLabelType)
-    dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
-    sig <- peak$sig
-    time <- peak$time
-    r.fwhm <- mapply(calc.fwhm,sig,data.frame(time))
-    peak.fwhm <- round(mean(r.fwhm),digits = 4)
-    # calculate fwhm to base ratio for each transition
-    r.fwhm2base <- r.fwhm/(tail(time,1) - time[1])
-    peak.fwhm2base <- round(mean(r.fwhm2base),digits = 4)
-    tr <- paste(dots, collapse = '.')
+  # calculate fwhm for each transition
+  dots <- list(...)
+  grp <- levels(dots$IsotopeLabelType)
+  dots$IsotopeLabelType <- as.character(dots$IsotopeLabelType)
+  sig <- peak$sig
+  time <- peak$time
+  r.fwhm <- mapply(calc.fwhm,sig,data.frame(time))
+  peak.fwhm <- round(mean(r.fwhm),digits = 4)
+  # calculate fwhm to base ratio for each transition
+  r.fwhm2base <- r.fwhm/(tail(time,1) - time[1])
+  peak.fwhm2base <- round(mean(r.fwhm2base),digits = 4)
+  tr <- paste(dots, collapse = '.')
 
-    isob <- round(mean(r.fwhm2base[grep(dots$IsotopeLabelType,names(r.fwhm2base))]),digits = 4)
-    iso <- round(mean(r.fwhm[grep(dots$IsotopeLabelType,names(r.fwhm))]),digits = 4)
-    # format output
-    list(peak.fwhm, peak.fwhm2base, r.fwhm2base[tr], r.fwhm[tr], isob, iso)
-  }, error = function(e){
-    traceback()
-    errorReporting(e$message)
-  })
+  isob <- round(mean(r.fwhm2base[grep(dots$IsotopeLabelType,names(r.fwhm2base))]),digits = 4)
+  iso <- round(mean(r.fwhm[grep(dots$IsotopeLabelType,names(r.fwhm))]),digits = 4)
+  # format output
+  list(peak.fwhm, peak.fwhm2base, r.fwhm2base[tr], r.fwhm[tr], isob, iso)
 }
 
 
