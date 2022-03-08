@@ -66,11 +66,7 @@
 #' project.path <- file.path(extdata.path,project.folder.name)
 #' chromatogram.path <- file.path(project.path,"Chromatograms")
 #' peak.boundary.path <- file.path(project.path,"Peak_boundary")
-#' data <- CleanUpChromatograms(chromatogram.path = chromatogram.path,
-#'                             peak.boundary.path = peak.boundary.path,
-#'                             endogenous.label = "light",
-#'                             standard.label = "heavy",
-#'                             iRT.list = iRTList())
+#' data <- CleanUpChromatograms(chromatogram.path = chromatogram.path, peak.boundary.path = peak.boundary.path, endogenous.label = "light", standard.label = "heavy", iRT.list = iRTList())
 
 CleanUpChromatograms <- function(chromatogram.path = NULL,
                                  peak.boundary.path = NULL,

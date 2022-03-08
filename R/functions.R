@@ -219,8 +219,6 @@ buildPeakGroup <- function(dt){
   })
 }
 
-
-
 peakArea <- function(x, req=NA){
   req <- unique(req)
   if(is.na(req)){
@@ -314,7 +312,6 @@ plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
 
   vplots
 }
-
 
 impute_nonfinite <- function(x, impute=c('max','min','median','0')){
   impute <- match.arg(impute)

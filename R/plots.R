@@ -231,46 +231,28 @@ PlotQCReport <- function(response.data,response.var = c("Status.prediction"), re
 
   if (!plot.prob) {
     # only identifier columns and response columns are kept
-    response.data <- response.data[,c(identifier.columns,response.var)]
-
-    # replace the column name of the response.var
-    colnames.vec <- colnames(response.data)
-    colnames.vec[colnames.vec == response.var] <- "Status"
-    colnames(response.data) <- colnames.vec
-
+    response.data <- response.data[,c(identifier.columns,response.var), with = F]
+    setnames(response.data, response.var, 'Status')
   } else {
     # only identifier columns and response columns are kept
-    response.data <- response.data[,c(identifier.columns,response.var,flag.class.prob.var)]
-
-    # replace the column name of the response.var
-    colnames.vec <- colnames(response.data)
-    colnames.vec[colnames.vec == response.var] <- "Status"
-    colnames.vec[colnames.vec == flag.class.prob.var] <- "Flag.Class.Prob"
-    colnames(response.data) <- colnames.vec
-
+    response.data <- response.data[,c(identifier.columns,response.var,flag.class.prob.var), with = F]
+    setnames(response.data, c(response.var, flag.class.prob.var),
+             c("Status",'Flag.Class.Prob'))
   }
-
   # if any of the "sum" transitions are imported, remove them from the QC report.
-  response.data <- response.data %>% filter(FragmentIon != "sum")
-
+  response.data <- response.data[FragmentIon != 'sum']
   # for each skyline doc in the data:
   for (File_ in unique(response.data$File)) {
-
     # the report will be saved as a pdf file in the report path directory
     file.name <- paste0(File_,"_TargetedMSQC_report",format(Sys.time(), "_%Y%m%d_%H%M"),".pdf")
     report.file <- file.path(report.path,file.name)
     pdf(report.file)
 
     # filter rows for the skyline file
-    response.data.file <- response.data %>% filter(File == File_)
-
-
+    response.data.file <- response.data[File == File_]
     # calculate the number of "ok" transitions for each peptide and precursor charge combination
-    response.data.file.plot <- response.data.file %>%
-      group_by(FileName,PeptideModifiedSequence,PrecursorCharge) %>%
-      summarize(Ok.Transition.No = sum(Status == "ok")) %>%
-      ungroup()
-
+    response.data.file[, Ok.Transition.No = sum(Status == 'ok'),
+                       .(FileName,PeptideModifiedSequence,PrecursorCharge)]
     ## generating the global QC bargraphs
     response.data.file.bargraph.plot <- response.data.file.plot
 

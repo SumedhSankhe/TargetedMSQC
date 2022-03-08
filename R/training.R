@@ -246,12 +246,13 @@ MakeDataSet <- function(feature.path = NULL, training.path = NULL,
 #'
 #' @import caret
 #' @import RRF
-#'
+#' @import doParallel
 #' @examples
 #'
 #' rrf.grid <-  expand.grid(mtry = c(2,10),
 #'                          coefReg = c(0.5,1),
 #'                          coefImp = c(0))
+#'
 #' model.rrf <- TrainQCModel(data.set.CSF$data.training.feature,
 #'                           response.var = c("Status"),
 #'                           description.columns = c("Notes"),
@@ -301,9 +302,10 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
   if (!is.null(random.seed)) set.seed(random.seed[2])
 
   #parallel system check
-  if(parallel & !is.na(workers)){
-    message(Sys.time(),' : Setting up ',workers,' for parallel model training')
-    cl <- parallel::makePSOCKcluster(workers)
+  dots <- list(...)
+  if(dots$parallel & !is.na(dots$workers)){
+    message(Sys.time(),' : Setting up ',dots$workers,' workers for parallel model training')
+    cl <- parallel::makePSOCKcluster(dots$workers)
     doParallel::registerDoParallel(cl)
   }
 
@@ -312,7 +314,7 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
     model <- caret::train(feature.only[trainIndex,], resp_vector[trainIndex],
                    method = method, preProcess = c("center","scale"),
                    trControl = train_control, importance = TRUE, metric = metric,
-                   tuneGrid = tuneGrid[1:2,])
+                   tuneGrid = tuneGrid)
 
   } else {
       model <- caret::train(feature.only[trainIndex,], resp_vector[trainIndex],
@@ -320,7 +322,9 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
                      trControl = train_control, importance = TRUE, metric = metric)
 
   }
-  if(parallel){
+  message(Sys.time(), ' : Model Training Complete')
+  if(dots$parallel){
+    message(Sys.time(),' : Stopping Cluster')
     parallel::stopCluster(cl)
   }
 
@@ -330,8 +334,7 @@ TrainQCModel <- function(data.merged, response.var = c("Status"),
   # model performance based on confusion matrix for unseen data (testing set)
   performance.testing <- confusionMatrix(
     as.factor(response.prediction[-trainIndex]),
-    as.factor(resp_vector[-trainIndex])
-    )
+    as.factor(resp_vector[-trainIndex]))
 
   QC.model = list(model = model, performance.testing = performance.testing,
                   model.file.path = model.path)
