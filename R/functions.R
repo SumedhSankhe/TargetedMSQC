@@ -247,6 +247,8 @@ peakArea <- function(x, req=NA){
 #'
 #' @export
 #'
+#' @import ggplot2
+#'
 plot_chrom <- function(peak, font.size = 14, transition.list = NA,
                        label.list = NA, split.label = TRUE){
 
@@ -307,6 +309,7 @@ violin_plot <- function(x, data, labels, id.vars, font.size){
 #'
 #' @export
 #'
+#' @import ggplot2
 plot_qc_summary <- function(data, runs = 'all', features = NULL, labels = NULL,
                             font.size = 14){
 
