@@ -18,7 +18,6 @@ Imports:
 	caret,
 	doParallel,
 	RRF,
-	ComplexHeatmap,
 	circlize,
 	grid
 Suggests:
